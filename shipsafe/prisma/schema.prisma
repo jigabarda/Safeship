@@ -1,0 +1,53 @@
+// Safeship data model (§6 of BUILD.md)
+// SQLite for dev — zero setup. Portable to Postgres later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  githubId    String   @unique
+  username    String
+  email       String?
+  accessToken String // GitHub OAuth token — kept server-side only, never logged
+  createdAt   DateTime @default(now())
+  scans       Scan[]
+}
+
+model Scan {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  repoFullName String // e.g. "octocat/hello-world"
+  repoUrl      String
+  status       String    @default("queued") // queued | running | done | failed
+  score        Int? // 0-100 overall safety score, computed from findings
+  error        String?
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  findings     Finding[]
+}
+
+model Finding {
+  id               String   @id @default(cuid())
+  scanId           String
+  scan             Scan     @relation(fields: [scanId], references: [id])
+  engine           String // gitleaks | semgrep | osv
+  ruleId           String
+  severity         String // critical | high | medium | low (normalized)
+  priority         String // fix_now | should_fix | minor (LLM-assigned)
+  title            String // short, plain-language title
+  filePath         String?
+  line             Int?
+  rawMessage       String // engine's original message
+  plainExplanation String? // LLM: what it means, for a non-expert
+  suggestedFix     String? // LLM: how to fix it (snippet or steps)
+  redacted         Boolean  @default(false) // true if we scrubbed a secret value
+  createdAt        DateTime @default(now())
+}

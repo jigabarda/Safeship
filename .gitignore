@@ -1,0 +1,15 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Safety net — the app's own shipsafe/.gitignore already covers these, but never
+# let secrets or build artifacts into this public repo under any circumstance.
+**/.env
+**/.env.local
+!**/.env.example
+**/*.db
+**/*.db-journal
+**/node_modules/
+**/.next/
+**/tmp/
+**/.scan-clones/
