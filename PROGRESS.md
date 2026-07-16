@@ -11,6 +11,8 @@
 - [x] Phase 6: UI — landing, dashboard (repo list + search + scan + past scans + engine banner), report page (score, grouped findings, copy fixes, live polling). Production build PASS (8 routes).
 - [x] Phase 7: engine-availability banner, README (zero-to-run + OAuth + LLM switch + deploy), redaction re-verified. LLM provider swap verified via env only.
 - [x] DONE — MVP complete and verified (build + tsc + all 3 test harnesses green; only the browser sign-in flow needs the user's GitHub OAuth credentials).
+- [x] Pushed to GitHub: https://github.com/jigabarda/Safeship (fixture fake-secrets assembled at runtime so GitHub push-protection stays clean).
+- [x] Flattened layout: app moved from `shipsafe/` up to repo root; `shipsafe/` folder removed. Build still passes. README/structure updated.
 
 ## Notes / decisions
 - Stack came out as **Next.js 16.2.10 + React 19 + Tailwind v4** (create-next-app@latest moved past 15). Adjusted conventions accordingly (async route `params`, CSS-based Tailwind config).
