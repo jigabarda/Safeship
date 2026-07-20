@@ -1,6 +1,8 @@
 # MIGRATION_PLAN.md — Safeship: serverless-friendly, $0, no-credit-card deploy
 
-> **Status:** DESIGN ONLY. No app code has been changed yet.
+> **Status:** ✅ IMPLEMENTED & DEPLOYED. All phases (A–F) landed on `main` and the app
+> runs on Vercel + GitHub Actions + Supabase + Groq. This doc is kept as the design record;
+> see `README.md` for the current setup/deploy guide.
 > **Revert net:** see `revert/REVERT_PLAN.md` (a full snapshot of the pre-migration
 > working state was captured before this plan was written).
 
