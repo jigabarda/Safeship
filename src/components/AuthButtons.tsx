@@ -18,7 +18,7 @@ export function SignInButton({ label = "Sign in with GitHub" }: { label?: string
     >
       <button
         type="submit"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-foreground px-6 text-background font-medium transition-colors hover:opacity-90"
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-foreground px-6 text-background font-medium shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
       >
         <GithubMark />
         {label}

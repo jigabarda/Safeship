@@ -28,7 +28,15 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        {children}
+        <footer className="border-t border-line">
+          <div className="mx-auto w-full max-w-5xl px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted">
+            <span>Safeship · static analysis only — it never attacks anything.</span>
+            <span>Runs locally · open-source engines · your code stays on your machine.</span>
+          </div>
+        </footer>
+      </body>
     </html>
   );
 }
