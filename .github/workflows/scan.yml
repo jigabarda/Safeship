@@ -1,0 +1,101 @@
+name: Safeship scan
+
+# Phase C: a manually-triggerable scan that installs the real engines on a
+# GitHub-hosted runner, runs scanner/run.ts over a target repo, and uploads the
+# REDACTED findings as an artifact.
+#
+# Phase D will add `repository_dispatch` (so the Vercel app can trigger this) and
+# POST the findings to a callback instead of only uploading an artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: "HTTPS URL of the repository to scan (public repo for now)"
+        required: true
+        type: string
+      scan_id:
+        description: "Safeship scan id (optional; used by the Phase D callback)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # Pinned engine versions (verified asset names). Bump deliberately.
+  GITLEAKS_VERSION: "8.30.1"
+  OSV_SCANNER_VERSION: "2.4.0"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Safeship (the scanner code)
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Install osv-scanner
+        run: |
+          curl -sSL "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" -o osv-scanner
+          chmod +x osv-scanner
+          sudo mv osv-scanner /usr/local/bin/osv-scanner
+          osv-scanner --version
+
+      - name: Install semgrep
+        run: |
+          pipx install semgrep
+          semgrep --version
+
+      - name: Run scan
+        # Pass the input through an env var (never interpolate ${{ }} directly
+        # into a shell line — that would allow command injection).
+        env:
+          REPO_URL: ${{ inputs.repo_url }}
+        run: |
+          node --import tsx scanner/run.ts --repo "$REPO_URL" > findings.json
+          echo "findings.json: $(wc -c < findings.json) bytes"
+
+      - name: Summarize
+        if: always()
+        env:
+          REPO_URL: ${{ inputs.repo_url }}
+          SCAN_ID: ${{ inputs.scan_id }}
+        run: |
+          {
+            echo "### Safeship scan — \`$REPO_URL\`"
+            echo ""
+            if [ -f findings.json ]; then
+              COUNT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('findings.json','utf8')).findings.length)")
+              ENGINES=$(node -e "const e=JSON.parse(require('fs').readFileSync('findings.json','utf8')).engines; console.log(e.map(x=>x.engine+': '+(x.available?'ok':'missing')).join(', '))")
+              echo "- Findings: **$COUNT**"
+              echo "- Engines: $ENGINES"
+            else
+              echo "- ⚠️ No findings.json produced (scan step failed)."
+            fi
+            echo "- Scan id: \`${SCAN_ID:-n/a}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safeship-findings
+          path: findings.json
+          if-no-files-found: warn
