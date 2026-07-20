@@ -43,6 +43,9 @@ yarn-error.log*
 /tmp/
 /.scan-clones/
 
+# revert snapshot (contains .env backup + dev.db copy — never commit)
+/revert/
+
 # vercel
 .vercel
 
