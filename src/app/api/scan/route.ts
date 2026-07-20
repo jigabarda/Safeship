@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { runScan } from "@/lib/scan/runScan";
+import { dispatchScanWorkflow } from "@/lib/scan/dispatch";
 
 const bodySchema = z.object({
   repoFullName: z.string().min(1),
@@ -9,9 +9,10 @@ const bodySchema = z.object({
 });
 
 /**
- * Kick off a scan. Creates a Scan row (status=queued), starts runScan in the
- * background (fire-and-forget — the Node process keeps running it), and returns
- * immediately. The client polls GET /api/scan/[id] for progress.
+ * Kick off a scan. Creates a Scan row (status=queued), triggers the GitHub
+ * Actions scan workflow (which runs the engines on a runner and POSTs findings
+ * back to /api/scan/callback), and returns immediately. The client polls
+ * GET /api/scan/[id] for progress.
  */
 export async function POST(request: Request) {
   const session = await auth();
@@ -34,10 +35,33 @@ export async function POST(request: Request) {
     },
   });
 
-  // Fire-and-forget. runScan marks the row failed on error, so we just log here.
-  void runScan(scan.id).catch((e) => {
-    console.error(`[scan ${scan.id}] failed:`, e);
+  const base = process.env.APP_URL ?? new URL(request.url).origin;
+  const callbackUrl = `${base}/api/scan/callback`;
+
+  try {
+    await dispatchScanWorkflow({
+      scanId: scan.id,
+      repoUrl: parsed.repoUrl,
+      callbackUrl,
+    });
+  } catch (e) {
+    console.error(`[scan ${scan.id}] dispatch failed:`, e);
+    await db.scan.update({
+      where: { id: scan.id },
+      data: {
+        status: "failed",
+        error: "Could not start the scan. Please try again.",
+        finishedAt: new Date(),
+      },
+    });
+    return Response.json({ error: "Could not start the scan" }, { status: 502 });
+  }
+
+  // Dispatch accepted — the workflow is starting.
+  await db.scan.update({
+    where: { id: scan.id },
+    data: { status: "running" },
   });
 
-  return Response.json({ id: scan.id, status: scan.status }, { status: 202 });
+  return Response.json({ id: scan.id, status: "running" }, { status: 202 });
 }
