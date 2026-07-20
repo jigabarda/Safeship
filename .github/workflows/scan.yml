@@ -1,11 +1,13 @@
 name: Safeship scan
 
-# Phase C: a manually-triggerable scan that installs the real engines on a
-# GitHub-hosted runner, runs scanner/run.ts over a target repo, and uploads the
-# REDACTED findings as an artifact.
+# Runs the real engines on a GitHub-hosted runner and returns REDACTED findings.
+# Two ways in:
+#   • workflow_dispatch    — manual (UI / `gh workflow run`); uploads an artifact.
+#   • repository_dispatch  — triggered by the app (POST /api/scan); POSTs findings
+#                            back to the app's /api/scan/callback.
 #
-# Phase D will add `repository_dispatch` (so the Vercel app can trigger this) and
-# POST the findings to a callback instead of only uploading an artifact.
+# NOTE: repository_dispatch always runs the workflow + code from the DEFAULT
+# branch, so the scanner code must be on `main` for the app-triggered path.
 
 on:
   workflow_dispatch:
@@ -15,9 +17,11 @@ on:
         required: true
         type: string
       scan_id:
-        description: "Safeship scan id (optional; used by the Phase D callback)"
+        description: "Safeship scan id (optional; used by the callback)"
         required: false
         type: string
+  repository_dispatch:
+    types: [safeship-scan]
 
 permissions:
   contents: read
@@ -32,6 +36,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Resolve inputs (workflow_dispatch OR repository_dispatch)
+        id: vars
+        env:
+          WD_REPO: ${{ inputs.repo_url }}
+          WD_SCAN: ${{ inputs.scan_id }}
+          RD_REPO: ${{ github.event.client_payload.repo_url }}
+          RD_SCAN: ${{ github.event.client_payload.scan_id }}
+          RD_CALLBACK: ${{ github.event.client_payload.callback_url }}
+        run: |
+          {
+            echo "repo_url=${WD_REPO:-$RD_REPO}"
+            echo "scan_id=${WD_SCAN:-$RD_SCAN}"
+            echo "callback_url=${RD_CALLBACK}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout Safeship (the scanner code)
         uses: actions/checkout@v4
 
@@ -64,19 +83,33 @@ jobs:
           semgrep --version
 
       - name: Run scan
-        # Pass the input through an env var (never interpolate ${{ }} directly
-        # into a shell line — that would allow command injection).
         env:
-          REPO_URL: ${{ inputs.repo_url }}
+          REPO_URL: ${{ steps.vars.outputs.repo_url }}
         run: |
           node --import tsx scanner/run.ts --repo "$REPO_URL" > findings.json
           echo "findings.json: $(wc -c < findings.json) bytes"
 
+      - name: Send results to callback (app-triggered runs)
+        if: steps.vars.outputs.callback_url != ''
+        env:
+          CALLBACK_URL: ${{ steps.vars.outputs.callback_url }}
+          SCAN_ID: ${{ steps.vars.outputs.scan_id }}
+          CALLBACK_SECRET: ${{ secrets.SCAN_CALLBACK_SECRET }}
+        run: |
+          jq -c --arg sid "$SCAN_ID" '{scanId: $sid, findings: .findings}' findings.json > payload.json
+          echo "posting $(wc -c < payload.json) bytes to callback"
+          code=$(curl -sS -o resp.txt -w "%{http_code}" -X POST "$CALLBACK_URL" \
+            -H "content-type: application/json" \
+            -H "x-safeship-secret: $CALLBACK_SECRET" \
+            --data @payload.json)
+          echo "callback HTTP $code"; cat resp.txt || true
+          test "$code" = "200"
+
       - name: Summarize
         if: always()
         env:
-          REPO_URL: ${{ inputs.repo_url }}
-          SCAN_ID: ${{ inputs.scan_id }}
+          REPO_URL: ${{ steps.vars.outputs.repo_url }}
+          SCAN_ID: ${{ steps.vars.outputs.scan_id }}
         run: |
           {
             echo "### Safeship scan — \`$REPO_URL\`"
