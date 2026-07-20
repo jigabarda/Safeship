@@ -185,6 +185,9 @@ function Report({ data }: { data: ScanData }) {
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set());
   const [groupBy, setGroupBy] = useState<GroupBy>("priority");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [explains, setExplains] = useState<
+    Record<string, { plainExplanation: string; suggestedFix: string } | { error: true }>
+  >({});
 
   const severityCounts = useMemo(() => {
     const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -217,6 +220,37 @@ function Report({ data }: { data: ScanData }) {
       ? selectedId
       : (ordered[0]?.id ?? null);
   const selected = ordered.find((f) => f.id === activeId) ?? null;
+
+  // Lazily fetch the AI explanation for the open finding (cached in the DB, so
+  // it's generated only once and survives reloads). "Loading" is derived, not
+  // stored, so this effect only ever calls setState in an async callback.
+  useEffect(() => {
+    if (!activeId) return;
+    const f = ordered.find((x) => x.id === activeId);
+    if (!f || f.plainExplanation || explains[activeId]) return;
+    let cancelled = false;
+    fetch(`/api/findings/${activeId}/explain`, { method: "POST" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("explain failed"))))
+      .then((d: { plainExplanation: string; suggestedFix: string }) => {
+        if (!cancelled) setExplains((prev) => ({ ...prev, [activeId]: d }));
+      })
+      .catch(() => {
+        if (!cancelled) setExplains((prev) => ({ ...prev, [activeId]: { error: true } }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, ordered, explains]);
+
+  const withExplanation = (f: FindingData): FindingData => {
+    const ov = explains[f.id];
+    return ov && !("error" in ov)
+      ? { ...f, plainExplanation: ov.plainExplanation, suggestedFix: ov.suggestedFix }
+      : f;
+  };
+  // Derived: a finding is "loading" while unexplained with no result/error yet.
+  const isExplaining = (f: FindingData): boolean =>
+    !f.plainExplanation && !explains[f.id];
 
   const toggleSeverity = (s: Severity) =>
     setActiveSeverities((prev) => {
@@ -320,7 +354,7 @@ function Report({ data }: { data: ScanData }) {
                         {/* Mobile: inline detail under the selected row */}
                         {activeId === f.id && (
                           <div className="mt-2 lg:hidden">
-                            <DetailPanel finding={f} />
+                            <DetailPanel finding={withExplanation(f)} loading={isExplaining(f)} />
                           </div>
                         )}
                       </div>
@@ -332,7 +366,7 @@ function Report({ data }: { data: ScanData }) {
               {/* RIGHT — sticky detail panel (desktop only) */}
               <aside className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
                 {selected ? (
-                  <DetailPanel finding={selected} />
+                  <DetailPanel finding={withExplanation(selected)} loading={isExplaining(selected)} />
                 ) : (
                   <div className="rounded-xl border border-dashed border-line bg-surface/50 p-8 text-center text-sm text-muted">
                     Select a finding to see the full explanation and fix.
@@ -426,7 +460,13 @@ function FindingRow({
   );
 }
 
-function DetailPanel({ finding }: { finding: FindingData }) {
+function DetailPanel({
+  finding,
+  loading = false,
+}: {
+  finding: FindingData;
+  loading?: boolean;
+}) {
   const priority = isPriority(finding.priority) ? finding.priority : "minor";
   const pmeta = PRIORITY_META[priority];
   const sev = isSeverity(finding.severity) ? finding.severity : null;
@@ -475,19 +515,35 @@ function DetailPanel({ finding }: { finding: FindingData }) {
           <span className="text-xs font-semibold uppercase tracking-wide text-muted">
             What it means
           </span>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
-            {finding.plainExplanation ?? finding.rawMessage}
-          </p>
-          {!finding.plainExplanation && (
-            <p className="mt-1 text-xs italic text-muted">
-              Showing the security engine&apos;s original message — a plain-language AI
-              explanation isn&apos;t available for this finding.
+          {finding.plainExplanation ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
+              {finding.plainExplanation}
             </p>
+          ) : loading ? (
+            <p className="flex items-center gap-2 text-sm text-muted">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+              Writing a plain-English explanation…
+            </p>
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
+                {finding.rawMessage}
+              </p>
+              <p className="mt-1 text-xs italic text-muted">
+                Showing the security engine&apos;s original message — the AI explanation
+                couldn&apos;t be generated.
+              </p>
+            </>
           )}
         </div>
 
         {finding.suggestedFix ? (
           <FixBlock text={finding.suggestedFix} />
+        ) : loading ? (
+          <div className="flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+            Generating a suggested fix…
+          </div>
         ) : (
           <p className="rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted">
             No AI-suggested fix yet. For dependency issues this usually means{" "}
