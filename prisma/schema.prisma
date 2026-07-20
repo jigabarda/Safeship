@@ -1,13 +1,16 @@
 // Safeship data model (§6 of BUILD.md)
-// SQLite for dev — zero setup. Portable to Postgres later.
+// Postgres (Supabase) — durable, multi-user, and works on Vercel serverless.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled (PgBouncer, port 6543) connection used by the app.
+  url       = env("DATABASE_URL")
+  // Direct connection (port 5432) used only for migrations.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
