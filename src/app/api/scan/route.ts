@@ -35,7 +35,9 @@ export async function POST(request: Request) {
     },
   });
 
-  const base = process.env.APP_URL ?? new URL(request.url).origin;
+  // Strip any trailing slash so a stray one in APP_URL can't produce a
+  // "//api/scan/callback" that Vercel 308-redirects (which breaks the callback).
+  const base = (process.env.APP_URL ?? new URL(request.url).origin).replace(/\/+$/, "");
   const callbackUrl = `${base}/api/scan/callback`;
 
   try {
