@@ -33,7 +33,7 @@ export default function RootLayout({
         <footer className="border-t border-line">
           <div className="mx-auto w-full max-w-5xl px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted">
             <span>Safeship · static analysis only — it never attacks anything.</span>
-            <span>Runs locally · open-source engines · your code stays on your machine.</span>
+            <span>Open-source engines · your code is scanned in a temporary sandbox, never stored.</span>
           </div>
         </footer>
       </body>

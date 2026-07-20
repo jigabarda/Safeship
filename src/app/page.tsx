@@ -68,7 +68,7 @@ export default function Home() {
           <Feature
             icon={<IconSpark />}
             title="100% free"
-            body="Runs locally with open-source engines and a local AI model."
+            body="Open-source engines and free infrastructure — no paid APIs, ever."
           />
         </ul>
       </main>

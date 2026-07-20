@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { SignInButton, SignOutButton } from "@/components/AuthButtons";
 import { RepoList, type Repo } from "@/components/RepoList";
 import { Logo } from "@/components/Logo";
-import { checkEngines } from "@/lib/engines/availability";
 import { scoreMeta } from "@/lib/ui";
 
 interface GithubRepo {
@@ -79,9 +78,6 @@ export default async function DashboardPage() {
     take: 20,
   });
 
-  const engines = await checkEngines();
-  const missingEngines = engines.filter((e) => !e.available);
-
   return (
     <>
       <header className="sticky top-0 z-10 border-b border-line bg-background/80 backdrop-blur">
@@ -105,28 +101,6 @@ export default async function DashboardPage() {
             Pick a repository to scan for leaked secrets and vulnerable dependencies.
           </p>
         </div>
-
-        {missingEngines.length > 0 && (
-          <div className="rounded-xl border border-amber-300/70 bg-amber-50 p-4 text-sm dark:border-amber-800/60 dark:bg-amber-950/25">
-            <p className="flex items-center gap-2 font-medium text-amber-800 dark:text-amber-300">
-              <IconWarn />
-              {missingEngines.length} scan engine
-              {missingEngines.length === 1 ? " is" : "s are"} not installed
-            </p>
-            <p className="mt-1 text-amber-800/80 dark:text-amber-300/80">
-              Scans still run with whatever is available, but you&apos;ll get more
-              complete results after installing:
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {missingEngines.map((e) => (
-                <li key={e.engine} className="text-amber-800/90 dark:text-amber-300/90">
-                  <span className="font-mono font-medium">{e.label}</span> — {e.purpose}.{" "}
-                  <span className="opacity-80">{e.installHint}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         <section className="flex flex-col gap-4">
           <div className="flex items-baseline justify-between">
@@ -195,20 +169,5 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium capitalize ${cls}`}>
       {status}
     </span>
-  );
-}
-
-function IconWarn() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0" aria-hidden>
-      <path
-        d="M12 3.5l9 15.5H3l9-15.5z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path d="M12 10v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="12" cy="16.5" r="0.9" fill="currentColor" />
-    </svg>
   );
 }
