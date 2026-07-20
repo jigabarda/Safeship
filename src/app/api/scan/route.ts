@@ -35,6 +35,18 @@ export async function POST(request: Request) {
     },
   });
 
+  // Local dev (SCAN_MODE=local): run the scan inline using the engines installed on
+  // this machine, instead of dispatching to a GitHub Actions runner. A cloud runner
+  // can't POST results back to localhost, so inline is how you test the full flow
+  // locally. The dynamic import keeps the engine deps out of the prod serverless bundle.
+  if ((process.env.SCAN_MODE ?? "dispatch") === "local") {
+    const { runScan } = await import("@/lib/scan/runScan");
+    void runScan(scan.id).catch((e) => {
+      console.error(`[scan ${scan.id}] local run failed:`, e);
+    });
+    return Response.json({ id: scan.id, status: "running" }, { status: 202 });
+  }
+
   // Strip any trailing slash so a stray one in APP_URL can't produce a
   // "//api/scan/callback" that Vercel 308-redirects (which breaks the callback).
   const base = (process.env.APP_URL ?? new URL(request.url).origin).replace(/\/+$/, "");
