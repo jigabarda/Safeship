@@ -97,7 +97,8 @@ export function RepoList({ repos }: { repos: Repo[] }) {
                   </span>
                 )}
                 {repo.language && repo.updatedAt && <span>·</span>}
-                {repo.updatedAt && `updated ${new Date(repo.updatedAt).toLocaleDateString()}`}
+                {repo.updatedAt &&
+                  `updated ${new Date(repo.updatedAt).toLocaleDateString("en-US", { timeZone: "UTC" })}`}
               </p>
             </div>
             <button
