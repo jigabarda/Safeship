@@ -1,10 +1,8 @@
 import { db } from "../db";
-import { explainFindingSafe, getLlmClient } from "../llm/index";
+import { fallbackPriority } from "../llm/prompt";
 import { runEngineScan } from "./engineScan";
+import { recordScanStep } from "./recordStep";
 import { computeScore } from "./score";
-
-const LLM_MAX_FINDINGS = Number(process.env.SCAN_LLM_MAX_FINDINGS ?? 40);
-const LLM_CONCURRENCY = 2;
 
 export interface RunScanOptions {
   /**
@@ -39,58 +37,39 @@ export async function runScan(
 
   try {
     // 1) Get REDACTED findings from the engines (clone + run + redact + cleanup).
+    // (No "preparing" step locally — the engines are already installed here.)
+    await recordScanStep(scanId, "scanning");
     const { findings } = await runEngineScan({
       repoUrl: scan.repoUrl,
       token: scan.user.accessToken,
       sourceDirOverride: opts.sourceDirOverride,
     });
 
-    // 2) LLM explain + persist. Cap how many findings hit the LLM.
-    const llm = getLlmClient();
-    let explainedCount = 0;
+    // 2) Persist in one bulk insert. NO eager LLM pass here — plain-language
+    // explanations are generated lazily when a finding is opened
+    // (/api/findings/[id]/explain), exactly like the GitHub Actions path.
+    // Explaining every finding up front made local scans take many minutes on a
+    // local model, for text the user may never look at.
+    await recordScanStep(scanId, "reporting");
 
-    await mapWithConcurrency(findings, LLM_CONCURRENCY, async (finding) => {
-      let explanation =
-        null as Awaited<ReturnType<typeof explainFindingSafe>> | null;
-      const shouldExplain = explainedCount < LLM_MAX_FINDINGS;
-      if (shouldExplain) {
-        explainedCount++;
-        explanation = await explainFindingSafe(
-          {
-            engine: finding.engine,
-            ruleId: finding.ruleId,
-            rawMessage: finding.rawMessage,
-            severity: finding.severity,
-          },
-          llm,
-        );
-      }
-
-      const priority =
-        explanation?.output.priority ??
-        (finding.severity === "critical" || finding.severity === "high"
-          ? "fix_now"
-          : finding.severity === "medium"
-            ? "should_fix"
-            : "minor");
-
-      await db.finding.create({
-        data: {
+    if (findings.length > 0) {
+      await db.finding.createMany({
+        data: findings.map((finding) => ({
           scanId,
           engine: finding.engine,
           ruleId: finding.ruleId,
           severity: finding.severity,
-          priority,
-          title: explanation?.output.title ?? finding.title,
+          priority: fallbackPriority(finding.severity),
+          title: finding.title,
           filePath: finding.filePath,
           line: finding.line,
           rawMessage: finding.rawMessage,
-          plainExplanation: explanation?.output.plainExplanation ?? null,
-          suggestedFix: explanation?.output.suggestedFix ?? null,
+          plainExplanation: null,
+          suggestedFix: null,
           redacted: finding.redacted,
-        },
+        })),
       });
-    });
+    }
 
     // 3) Score + finish.
     const score = computeScore(findings.map((f) => f.severity));
@@ -120,20 +99,4 @@ function friendlyError(e: unknown): string {
     return "Repository not found. It may be private or renamed.";
   }
   return "The scan failed unexpectedly. Please try again.";
-}
-
-/** Run an async mapper over items with a bounded number in flight. */
-async function mapWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length || 1) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      await fn(items[idx]);
-    }
-  });
-  await Promise.all(workers);
 }

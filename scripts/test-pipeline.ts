@@ -38,7 +38,7 @@ async function main() {
   });
 
   try {
-    console.log("Running scan (this exercises the local LLM — may take a bit)...\n");
+    console.log("Running scan (engines only — explanations are generated lazily)...\n");
     await runScan(scan.id, { sourceDirOverride: fixtureDir });
 
     const done = await db.scan.findUniqueOrThrow({ where: { id: scan.id } });
@@ -57,8 +57,12 @@ async function main() {
     }, {});
     console.log("     severities:", JSON.stringify(bySeverity));
 
-    const explained = findings.filter((f) => f.plainExplanation);
-    assert(explained.length > 0, `at least one AI explanation stored (${explained.length})`);
+    // Explanations are generated lazily (/api/findings/[id]/explain), so a fresh
+    // scan stores findings without them — expected, not a regression.
+    assert(
+      findings.every((f) => f.plainExplanation === null),
+      "findings stored without an eager AI pass (explained lazily when opened)",
+    );
     assert(findings.some((f) => f.redacted), "at least one finding flagged redacted");
 
     // The critical safety check: no planted secret value anywhere in the DB.
@@ -70,10 +74,10 @@ async function main() {
     assert(existsSync(fixtureDir), "original fixture untouched");
 
     console.log("\n  Sample stored finding:");
-    const sample = explained[0];
+    const sample = findings[0];
     console.log("   [" + sample.priority + "] " + sample.title);
     console.log("   " + (sample.filePath ?? "(no path)") + (sample.line ? ":" + sample.line : ""));
-    console.log("   " + (sample.plainExplanation ?? "").slice(0, 140) + "...");
+    console.log("   " + sample.rawMessage.slice(0, 140) + "...");
 
     console.log(`\n✅ ACCEPTANCE PASS — score ${done.score}/100, ${findings.length} findings, no secrets leaked.`);
   } finally {
