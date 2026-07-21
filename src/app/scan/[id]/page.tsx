@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { AppHeader } from "@/components/AppHeader";
 import { ScanReport, type ScanData } from "@/components/ScanReport";
 import { byPriorityThenSeverity } from "@/lib/scan/ordering";
 import { failScanIfStale, STALE_SCAN_ERROR } from "@/lib/scan/staleScans";
@@ -55,5 +56,10 @@ export default async function ScanPage({
     })),
   };
 
-  return <ScanReport scanId={id} initial={initial} />;
+  return (
+    <>
+      <AppHeader username={session.user.username ?? session.user.name} />
+      <ScanReport scanId={id} initial={initial} />
+    </>
+  );
 }

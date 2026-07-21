@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { SignInButton, SignOutButton } from "@/components/AuthButtons";
+import { AppHeader } from "@/components/AppHeader";
+import { SignInButton } from "@/components/AuthButtons";
 import { RepoList, type Repo } from "@/components/RepoList";
-import { Logo } from "@/components/Logo";
-import { failStaleScans } from "@/lib/scan/staleScans";
-import { scoreMeta } from "@/lib/ui";
 
 interface GithubRepo {
   id: number;
@@ -73,29 +71,12 @@ export default async function DashboardPage() {
     ? await fetchRepos(user.accessToken)
     : { repos: [], error: "No GitHub token on file — please sign in again." };
 
-  // Clean up scans abandoned by a lost runner before listing them, so nothing
-  // sits on "running" forever.
-  await failStaleScans(session.user.id);
-
-  const scans = await db.scan.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-  });
-
   return (
     <>
-      <header className="sticky top-0 z-10 border-b border-line bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-6">
-          <Logo />
-          <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-muted sm:inline">
-              {session.user.username ?? session.user.name}
-            </span>
-            <SignOutButton />
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        username={session.user.username ?? session.user.name}
+        containerClass="max-w-4xl"
+      />
 
       <main className="animate-in mx-auto flex w-full max-w-4xl flex-1 flex-col gap-10 px-6 py-10">
         <div>
@@ -121,58 +102,17 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        <section className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">Past scans</h2>
-          {scans.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line-strong bg-surface/50 px-4 py-8 text-center text-sm text-muted">
-              No scans yet. Pick a repo above and hit <strong>Scan</strong>.
-            </p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
-              {scans.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    href={`/scan/${s.id}`}
-                    className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-surface-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{s.repoFullName}</p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {new Date(s.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                    {typeof s.score === "number" ? (
-                      <span
-                        className={`shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-sm font-semibold tabular-nums ${scoreMeta(s.score).text}`}
-                      >
-                        {s.score}
-                        <span className="text-muted">/100</span>
-                      </span>
-                    ) : (
-                      <StatusBadge status={s.status} />
-                    )}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <p className="text-sm text-muted">
+          Looking for a previous result? See{" "}
+          <Link
+            href="/scans"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Scans
+          </Link>
+          .
+        </p>
       </main>
     </>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const running = status === "queued" || status === "running";
-  const failed = status === "failed";
-  const cls = failed
-    ? "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"
-    : running
-      ? "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
-      : "bg-surface-2 text-muted";
-  return (
-    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium capitalize ${cls}`}>
-      {status}
-    </span>
   );
 }

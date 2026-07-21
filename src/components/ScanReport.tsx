@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Logo } from "@/components/Logo";
 import {
   isPriority,
   isSeverity,
@@ -93,18 +92,6 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
 
   return (
     <>
-      <header className="sticky top-0 z-20 border-b border-line bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
-          <Logo />
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-muted transition-colors hover:text-foreground"
-          >
-            ← Dashboard
-          </Link>
-        </div>
-      </header>
-
       <main className="animate-in mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
         <div>
           <p className="text-sm text-muted">Security report</p>
