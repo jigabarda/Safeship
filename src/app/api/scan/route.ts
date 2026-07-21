@@ -2,6 +2,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { dispatchScanWorkflow } from "@/lib/scan/dispatch";
+import { recordScanStep } from "@/lib/scan/recordStep";
 
 const bodySchema = z.object({
   repoFullName: z.string().min(1),
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
     },
   });
 
+  await recordScanStep(scan.id, "starting");
+
   // Local dev (SCAN_MODE=local): run the scan inline using the engines installed on
   // this machine, instead of dispatching to a GitHub Actions runner. A cloud runner
   // can't POST results back to localhost, so inline is how you test the full flow
@@ -51,12 +54,14 @@ export async function POST(request: Request) {
   // "//api/scan/callback" that Vercel 308-redirects (which breaks the callback).
   const base = (process.env.APP_URL ?? new URL(request.url).origin).replace(/\/+$/, "");
   const callbackUrl = `${base}/api/scan/callback`;
+  const progressUrl = `${base}/api/scan/progress`;
 
   try {
     await dispatchScanWorkflow({
       scanId: scan.id,
       repoUrl: parsed.repoUrl,
       callbackUrl,
+      progressUrl,
     });
   } catch (e) {
     console.error(`[scan ${scan.id}] dispatch failed:`, e);

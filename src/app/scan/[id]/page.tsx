@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { ScanReport, type ScanData } from "@/components/ScanReport";
 import { byPriorityThenSeverity } from "@/lib/scan/ordering";
+import { parseScanSteps } from "@/lib/scan/steps";
 
 export default async function ScanPage({
   params,
@@ -29,6 +30,7 @@ export default async function ScanPage({
     error: scan.error,
     createdAt: scan.createdAt.toISOString(),
     finishedAt: scan.finishedAt ? scan.finishedAt.toISOString() : null,
+    steps: parseScanSteps(scan.steps),
     findings: findings.map((f) => ({
       id: f.id,
       engine: f.engine,

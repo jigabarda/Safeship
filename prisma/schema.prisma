@@ -32,6 +32,8 @@ model Scan {
   status       String    @default("queued") // queued | running | done | failed
   score        Int? // 0-100 overall safety score, computed from findings
   error        String?
+  /// Append-only progress events: [{ "key": "cloning", "at": "2026-01-01T00:00:00Z" }]
+  steps        Json?
   createdAt    DateTime  @default(now())
   finishedAt   DateTime?
   findings     Finding[]

@@ -44,11 +44,13 @@ jobs:
           RD_REPO: ${{ github.event.client_payload.repo_url }}
           RD_SCAN: ${{ github.event.client_payload.scan_id }}
           RD_CALLBACK: ${{ github.event.client_payload.callback_url }}
+          RD_PROGRESS: ${{ github.event.client_payload.progress_url }}
         run: |
           {
             echo "repo_url=${WD_REPO:-$RD_REPO}"
             echo "scan_id=${WD_SCAN:-$RD_SCAN}"
             echo "callback_url=${RD_CALLBACK}"
+            echo "progress_url=${RD_PROGRESS}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout Safeship (the scanner code)
@@ -59,6 +61,19 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+
+      # Progress pings are cosmetic — "|| true" so they can never fail a scan.
+      - name: Report progress — preparing
+        if: steps.vars.outputs.progress_url != ''
+        env:
+          PROGRESS_URL: ${{ steps.vars.outputs.progress_url }}
+          SCAN_ID: ${{ steps.vars.outputs.scan_id }}
+          CALLBACK_SECRET: ${{ secrets.SCAN_CALLBACK_SECRET }}
+        run: |
+          curl -sS -X POST "$PROGRESS_URL" \
+            -H "content-type: application/json" \
+            -H "x-safeship-secret: $CALLBACK_SECRET" \
+            --data "$(jq -nc --arg sid "$SCAN_ID" '{scanId:$sid, step:"preparing"}')" || true
 
       - name: Install dependencies
         run: npm ci
@@ -82,12 +97,36 @@ jobs:
           pipx install semgrep
           semgrep --version
 
+      - name: Report progress — scanning
+        if: steps.vars.outputs.progress_url != ''
+        env:
+          PROGRESS_URL: ${{ steps.vars.outputs.progress_url }}
+          SCAN_ID: ${{ steps.vars.outputs.scan_id }}
+          CALLBACK_SECRET: ${{ secrets.SCAN_CALLBACK_SECRET }}
+        run: |
+          curl -sS -X POST "$PROGRESS_URL" \
+            -H "content-type: application/json" \
+            -H "x-safeship-secret: $CALLBACK_SECRET" \
+            --data "$(jq -nc --arg sid "$SCAN_ID" '{scanId:$sid, step:"scanning"}')" || true
+
       - name: Run scan
         env:
           REPO_URL: ${{ steps.vars.outputs.repo_url }}
         run: |
           node --import tsx scanner/run.ts --repo "$REPO_URL" > findings.json
           echo "findings.json: $(wc -c < findings.json) bytes"
+
+      - name: Report progress — reporting
+        if: steps.vars.outputs.progress_url != ''
+        env:
+          PROGRESS_URL: ${{ steps.vars.outputs.progress_url }}
+          SCAN_ID: ${{ steps.vars.outputs.scan_id }}
+          CALLBACK_SECRET: ${{ secrets.SCAN_CALLBACK_SECRET }}
+        run: |
+          curl -sS -X POST "$PROGRESS_URL" \
+            -H "content-type: application/json" \
+            -H "x-safeship-secret: $CALLBACK_SECRET" \
+            --data "$(jq -nc --arg sid "$SCAN_ID" '{scanId:$sid, step:"reporting"}')" || true
 
       - name: Send results to callback (app-triggered runs)
         if: steps.vars.outputs.callback_url != ''

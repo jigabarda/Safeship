@@ -8,6 +8,8 @@ interface DispatchParams {
   repoUrl: string;
   /** Public URL the runner should POST findings back to. */
   callbackUrl: string;
+  /** Public URL the runner pings with step progress. */
+  progressUrl: string;
 }
 
 /**
@@ -36,6 +38,7 @@ export async function dispatchScanWorkflow(params: DispatchParams): Promise<void
         scan_id: params.scanId,
         repo_url: params.repoUrl,
         callback_url: params.callbackUrl,
+        progress_url: params.progressUrl,
       },
     }),
   });

@@ -15,6 +15,12 @@ import {
   type Priority,
   type Severity,
 } from "@/lib/ui";
+import {
+  SCAN_STEP_KEYS,
+  SCAN_STEP_META,
+  type ScanStepEvent,
+  type ScanStepKey,
+} from "@/lib/scan/steps";
 
 export interface FindingData {
   id: string;
@@ -39,6 +45,8 @@ export interface ScanData {
   error: string | null;
   createdAt: string;
   finishedAt: string | null;
+  /** Reported pipeline progress. Absent on older scans, hence optional. */
+  steps?: ScanStepEvent[];
   findings: FindingData[];
 }
 
@@ -105,7 +113,13 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
           </h1>
         </div>
 
-        {inProgress && <ScanProgress status={data.status} startedAt={data.createdAt} />}
+        {inProgress && (
+          <ScanProgress
+            status={data.status}
+            startedAt={data.createdAt}
+            steps={data.steps ?? []}
+          />
+        )}
         {data.status === "failed" && <FailedBanner error={data.error} />}
         {data.status === "done" && <Report data={data} />}
       </main>
@@ -113,52 +127,66 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
   );
 }
 
-// The scan's stages, with the elapsed second each one typically begins at. These
-// are ESTIMATES derived from a typical run — the engines report no intermediate
-// progress, so the checklist is a guide, not a live feed. The real completion
-// swaps this whole component out for the report.
-const SCAN_STEPS: Array<{ label: string; detail: string; at: number }> = [
-  { label: "Starting the scan", detail: "Getting the scan environment ready", at: 0 },
-  {
-    label: "Preparing the security engines",
-    detail: "gitleaks · osv-scanner · semgrep",
-    at: 7,
-  },
-  {
-    label: "Cloning your repository",
-    detail: "A temporary copy, deleted when the scan ends",
-    at: 46,
-  },
-  {
-    label: "Running the security engines",
-    detail: "Secrets, dependencies, and code patterns",
-    at: 50,
-  },
-  { label: "Preparing your report", detail: "Scoring and ranking the findings", at: 57 },
-];
-
-/** Typical end-to-end scan time, used only to pace the progress bar. */
-const ESTIMATED_TOTAL_S = 65;
-
-function ScanProgress({ status, startedAt }: { status: string; startedAt: string }) {
-  const [elapsed, setElapsed] = useState(0);
+/**
+ * Live scan progress. The steps shown are REAL: the runner (or the inline local
+ * pipeline) reports each stage as it begins, and those events arrive here via
+ * polling. Stages a topology skips — e.g. there's no "preparing" step locally,
+ * since the engines are already installed — simply show no duration.
+ */
+function ScanProgress({
+  status,
+  startedAt,
+  steps,
+}: {
+  status: string;
+  startedAt: string;
+  steps: ScanStepEvent[];
+}) {
+  // null until mounted, so server and client render identical initial HTML.
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    const start = new Date(startedAt).getTime();
-    const id = setInterval(() => {
-      setElapsed(Math.max(0, Math.round((Date.now() - start) / 1000)));
-    }, 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, []);
 
   const queued = status === "queued";
-  // While queued nothing has actually started, so hold on the first step.
-  const activeIndex = queued
-    ? 0
-    : SCAN_STEPS.reduce((acc, step, i) => (elapsed >= step.at ? i : acc), 0);
-  // Cap below 100%: we never claim "finished" from an estimate — the report
-  // appearing is the only real completion signal.
-  const percent = Math.min(95, Math.round((elapsed / ESTIMATED_TOTAL_S) * 100));
+
+  // When each reported stage began.
+  const beganAt = new Map<ScanStepKey, number>();
+  for (const event of steps) {
+    const t = new Date(event.at).getTime();
+    if (!Number.isNaN(t)) beganAt.set(event.key, t);
+  }
+
+  // The furthest stage actually reported drives the checklist — anything before
+  // it counts as complete, even if that stage never reported in.
+  const lastReported = steps.length > 0 ? steps[steps.length - 1].key : null;
+  const activeIndex = lastReported ? SCAN_STEP_KEYS.indexOf(lastReported) : 0;
+
+  const elapsed =
+    now === null
+      ? 0
+      : Math.max(0, Math.round((now - new Date(startedAt).getTime()) / 1000));
+  // Driven by real reported stages, capped below 100 — the report replacing this
+  // component is the only true "finished" signal.
+  const percent = Math.min(
+    95,
+    Math.round(((activeIndex + 0.5) / SCAN_STEP_KEYS.length) * 100),
+  );
+
+  /** Seconds a stage took (or is taking). null when it never reported. */
+  function durationOf(index: number): number | null {
+    const begin = beganAt.get(SCAN_STEP_KEYS[index]);
+    if (begin === undefined) return null;
+    const nextKey = SCAN_STEP_KEYS[index + 1];
+    const end = nextKey ? beganAt.get(nextKey) : undefined;
+    if (end !== undefined) return Math.max(0, Math.round((end - begin) / 1000));
+    if (index === activeIndex && now !== null) {
+      return Math.max(0, Math.round((now - begin) / 1000));
+    }
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-6 shadow-sm">
@@ -181,22 +209,24 @@ function ScanProgress({ status, startedAt }: { status: string; startedAt: string
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        aria-label="Scan progress (estimated)"
+        aria-label="Scan progress"
       >
         <div
-          className="h-full rounded-full bg-brand transition-[width] duration-1000 ease-linear"
+          className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out"
           style={{ width: `${percent}%` }}
         />
       </div>
 
       <ol className="flex flex-col gap-3">
-        {SCAN_STEPS.map((step, i) => {
+        {SCAN_STEP_KEYS.map((key, i) => {
+          const meta = SCAN_STEP_META[key];
           const state: StepState =
             i < activeIndex ? "done" : i === activeIndex ? "active" : "pending";
+          const seconds = durationOf(i);
           return (
-            <li key={step.label} className="flex items-start gap-3">
+            <li key={key} className="flex items-start gap-3">
               <StepIcon state={state} />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p
                   className={
                     state === "active"
@@ -206,21 +236,29 @@ function ScanProgress({ status, startedAt }: { status: string; startedAt: string
                         : "text-sm text-muted"
                   }
                 >
-                  {step.label}
+                  {meta.label}
                 </p>
-                <p className="mt-0.5 text-xs text-muted">{step.detail}</p>
+                <p className="mt-0.5 text-xs text-muted">{meta.detail}</p>
               </div>
+              {seconds !== null && (
+                <span className="shrink-0 font-mono text-xs tabular-nums text-muted">
+                  {formatDuration(seconds)}
+                </span>
+              )}
             </li>
           );
         })}
       </ol>
-
-      <p className="border-t border-line pt-4 text-xs text-muted">
-        Steps are estimated from a typical scan — your report appears as soon as the
-        scan actually finishes.
-      </p>
     </div>
   );
+}
+
+/** Compact stage duration, e.g. "8s" or "1m 3s". */
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
 
 type StepState = "done" | "active" | "pending";
