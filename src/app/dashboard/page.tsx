@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { SignInButton, SignOutButton } from "@/components/AuthButtons";
 import { RepoList, type Repo } from "@/components/RepoList";
 import { Logo } from "@/components/Logo";
+import { failStaleScans } from "@/lib/scan/staleScans";
 import { scoreMeta } from "@/lib/ui";
 
 interface GithubRepo {
@@ -71,6 +72,10 @@ export default async function DashboardPage() {
   const { repos, error } = user?.accessToken
     ? await fetchRepos(user.accessToken)
     : { repos: [], error: "No GitHub token on file — please sign in again." };
+
+  // Clean up scans abandoned by a lost runner before listing them, so nothing
+  // sits on "running" forever.
+  await failStaleScans(session.user.id);
 
   const scans = await db.scan.findMany({
     where: { userId: session.user.id },

@@ -287,11 +287,13 @@ function StepIcon({ state }: { state: StepState }) {
   return <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-line-strong" />;
 }
 
-/** m:ss elapsed display. */
+/** Elapsed display: "0:42", "12:05", or "23h 33m" once it runs past an hour. */
 function formatElapsed(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function FailedBanner({ error }: { error: string | null }) {

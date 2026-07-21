@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { byPriorityThenSeverity } from "@/lib/scan/ordering";
+import { failScanIfStale, STALE_SCAN_ERROR } from "@/lib/scan/staleScans";
 import { parseScanSteps } from "@/lib/scan/steps";
 
 /** Return a scan's status, score, and findings (owner-only). */
@@ -18,6 +19,13 @@ export async function GET(
 
   if (!scan || scan.userId !== session.user.id) {
     return Response.json({ error: "Scan not found" }, { status: 404 });
+  }
+
+  // A scan whose runner never reported back would otherwise poll forever.
+  if (await failScanIfStale(scan)) {
+    scan.status = "failed";
+    scan.error = STALE_SCAN_ERROR;
+    scan.finishedAt = new Date();
   }
 
   // While a scan is still running the client renders only status + progress, so

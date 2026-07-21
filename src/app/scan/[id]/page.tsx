@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { ScanReport, type ScanData } from "@/components/ScanReport";
 import { byPriorityThenSeverity } from "@/lib/scan/ordering";
+import { failScanIfStale, STALE_SCAN_ERROR } from "@/lib/scan/staleScans";
 import { parseScanSteps } from "@/lib/scan/steps";
 
 export default async function ScanPage({
@@ -19,6 +20,13 @@ export default async function ScanPage({
     include: { findings: true },
   });
   if (!scan || scan.userId !== session.user.id) notFound();
+
+  // Expire it up front so a dead scan renders as failed instead of spinning.
+  if (await failScanIfStale(scan)) {
+    scan.status = "failed";
+    scan.error = STALE_SCAN_ERROR;
+    scan.finishedAt = new Date();
+  }
 
   const findings = [...scan.findings].sort(byPriorityThenSeverity);
 
