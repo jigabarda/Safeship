@@ -1,5 +1,8 @@
 name: Safeship scan
 
+# Stamp the scan id into the run name so the app can find (and cancel) this run.
+run-name: safeship-scan ${{ github.event.client_payload.scan_id || inputs.scan_id }}
+
 # Runs the real engines on a GitHub-hosted runner and returns REDACTED findings.
 # Two ways in:
 #   • workflow_dispatch    — manual (UI / `gh workflow run`); uploads an artifact.

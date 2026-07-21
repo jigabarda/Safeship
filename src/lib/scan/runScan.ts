@@ -30,8 +30,10 @@ export async function runScan(
   });
   if (!scan) throw new Error(`Scan ${scanId} not found`);
 
-  await db.scan.update({
-    where: { id: scanId },
+  // updateMany (not update) so a scan cancelled between creation and start is
+  // never flipped back to running.
+  await db.scan.updateMany({
+    where: { id: scanId, status: { in: ["queued", "running"] } },
     data: { status: "running" },
   });
 
@@ -44,6 +46,17 @@ export async function runScan(
       token: scan.user.accessToken,
       sourceDirOverride: opts.sourceDirOverride,
     });
+
+    // The user may have cancelled while the engines were running; if so, throw
+    // the results away rather than completing a scan they stopped.
+    const current = await db.scan.findUnique({
+      where: { id: scanId },
+      select: { status: true },
+    });
+    if (current?.status === "cancelled") {
+      console.log(`[scan ${scanId}] cancelled mid-run — discarding results`);
+      return;
+    }
 
     // 2) Persist in one bulk insert. NO eager LLM pass here — plain-language
     // explanations are generated lazily when a finding is opened

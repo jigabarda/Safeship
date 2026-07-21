@@ -115,11 +115,13 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
 
         {inProgress && (
           <ScanProgress
+            scanId={scanId}
             status={data.status}
             startedAt={data.createdAt}
             steps={data.steps ?? []}
           />
         )}
+        {data.status === "cancelled" && <CancelledBanner />}
         {data.status === "failed" && <FailedBanner error={data.error} />}
         {data.status === "done" && <Report data={data} />}
       </main>
@@ -134,16 +136,28 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
  * since the engines are already installed — simply show no duration.
  */
 function ScanProgress({
+  scanId,
   status,
   startedAt,
   steps,
 }: {
+  scanId: string;
   status: string;
   startedAt: string;
   steps: ScanStepEvent[];
 }) {
   // null until mounted, so server and client render identical initial HTML.
   const [now, setNow] = useState<number | null>(null);
+  const [stopping, setStopping] = useState(false);
+
+  const stop = useCallback(async () => {
+    setStopping(true);
+    try {
+      await fetch(`/api/scan/${scanId}/cancel`, { method: "POST" });
+    } catch {
+      // Polling reflects whatever actually happened.
+    }
+  }, [scanId]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -201,6 +215,14 @@ function ScanProgress({
         <span className="shrink-0 font-mono text-sm tabular-nums text-muted">
           {formatElapsed(elapsed)}
         </span>
+        <button
+          type="button"
+          onClick={stop}
+          disabled={stopping}
+          className="shrink-0 rounded-full border border-line px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-line-strong hover:text-foreground disabled:opacity-50"
+        >
+          {stopping ? "Stopping…" : "Stop scan"}
+        </button>
       </div>
 
       <div
@@ -294,6 +316,18 @@ function formatElapsed(totalSeconds: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function CancelledBanner() {
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
+      <p className="font-medium">Scan stopped</p>
+      <p className="mt-1 text-sm text-muted">
+        You stopped this scan, so there&apos;s no report for it. You can start a
+        fresh scan from the dashboard whenever you&apos;re ready.
+      </p>
+    </div>
+  );
 }
 
 function FailedBanner({ error }: { error: string | null }) {

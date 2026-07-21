@@ -60,9 +60,10 @@ export async function POST(request: Request) {
   if (!scan) {
     return Response.json({ error: "Scan not found" }, { status: 404 });
   }
-  // Idempotent: a duplicate callback for an already-finished scan is a no-op.
-  if (scan.status === "done") {
-    return Response.json({ ok: true, note: "already done" });
+  // Idempotent, and never resurrect a scan the user cancelled. (A scan that
+  // timed out CAN still be rescued by late results — that's a better outcome.)
+  if (scan.status === "done" || scan.status === "cancelled") {
+    return Response.json({ ok: true, note: `already ${scan.status}` });
   }
 
   if (parsed.findings.length > 0) {

@@ -19,8 +19,15 @@ export async function recordScanStep(
       where: { id: scanId },
       select: { status: true, steps: true },
     });
-    // Don't rewrite history for a scan that already finished.
-    if (!scan || scan.status === "done" || scan.status === "failed") return;
+    // Don't rewrite history for a scan that already reached a terminal state.
+    if (
+      !scan ||
+      scan.status === "done" ||
+      scan.status === "failed" ||
+      scan.status === "cancelled"
+    ) {
+      return;
+    }
 
     const events = parseScanSteps(scan.steps);
     // Idempotent: a repeated report of the current step is a no-op.
