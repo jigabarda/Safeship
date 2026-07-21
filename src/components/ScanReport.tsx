@@ -105,7 +105,7 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
           </h1>
         </div>
 
-        {inProgress && <RunningBanner status={data.status} />}
+        {inProgress && <ScanProgress status={data.status} startedAt={data.createdAt} />}
         {data.status === "failed" && <FailedBanner error={data.error} />}
         {data.status === "done" && <Report data={data} />}
       </main>
@@ -113,19 +113,147 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
   );
 }
 
-function RunningBanner({ status }: { status: string }) {
+// The scan's stages, with the elapsed second each one typically begins at. These
+// are ESTIMATES derived from a typical run — the engines report no intermediate
+// progress, so the checklist is a guide, not a live feed. The real completion
+// swaps this whole component out for the report.
+const SCAN_STEPS: Array<{ label: string; detail: string; at: number }> = [
+  { label: "Starting the scan", detail: "Getting the scan environment ready", at: 0 },
+  {
+    label: "Preparing the security engines",
+    detail: "gitleaks · osv-scanner · semgrep",
+    at: 7,
+  },
+  {
+    label: "Cloning your repository",
+    detail: "A temporary copy, deleted when the scan ends",
+    at: 46,
+  },
+  {
+    label: "Running the security engines",
+    detail: "Secrets, dependencies, and code patterns",
+    at: 50,
+  },
+  { label: "Preparing your report", detail: "Scoring and ranking the findings", at: 57 },
+];
+
+/** Typical end-to-end scan time, used only to pace the progress bar. */
+const ESTIMATED_TOTAL_S = 65;
+
+function ScanProgress({ status, startedAt }: { status: string; startedAt: string }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const start = new Date(startedAt).getTime();
+    const id = setInterval(() => {
+      setElapsed(Math.max(0, Math.round((Date.now() - start) / 1000)));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  const queued = status === "queued";
+  // While queued nothing has actually started, so hold on the first step.
+  const activeIndex = queued
+    ? 0
+    : SCAN_STEPS.reduce((acc, step, i) => (elapsed >= step.at ? i : acc), 0);
+  // Cap below 100%: we never claim "finished" from an estimate — the report
+  // appearing is the only real completion signal.
+  const percent = Math.min(95, Math.round((elapsed / ESTIMATED_TOTAL_S) * 100));
+
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
-      <span className="h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-      <div>
-        <p className="font-medium">{status === "queued" ? "Queued…" : "Scanning your code…"}</p>
-        <p className="mt-0.5 text-sm text-muted">
-          Cloning the repo and running the security engines. This can take a minute —
-          the page updates itself.
-        </p>
+    <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+      <div className="flex items-center gap-4">
+        <span className="h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{queued ? "Queued…" : "Scanning your code…"}</p>
+          <p className="mt-0.5 text-sm text-muted">
+            Usually takes about a minute — this page updates itself.
+          </p>
+        </div>
+        <span className="shrink-0 font-mono text-sm tabular-nums text-muted">
+          {formatElapsed(elapsed)}
+        </span>
       </div>
+
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-label="Scan progress (estimated)"
+      >
+        <div
+          className="h-full rounded-full bg-brand transition-[width] duration-1000 ease-linear"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+
+      <ol className="flex flex-col gap-3">
+        {SCAN_STEPS.map((step, i) => {
+          const state: StepState =
+            i < activeIndex ? "done" : i === activeIndex ? "active" : "pending";
+          return (
+            <li key={step.label} className="flex items-start gap-3">
+              <StepIcon state={state} />
+              <div className="min-w-0">
+                <p
+                  className={
+                    state === "active"
+                      ? "text-sm font-medium text-foreground"
+                      : state === "done"
+                        ? "text-sm text-foreground/70"
+                        : "text-sm text-muted"
+                  }
+                >
+                  {step.label}
+                </p>
+                <p className="mt-0.5 text-xs text-muted">{step.detail}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="border-t border-line pt-4 text-xs text-muted">
+        Steps are estimated from a typical scan — your report appears as soon as the
+        scan actually finishes.
+      </p>
     </div>
   );
+}
+
+type StepState = "done" | "active" | "pending";
+
+function StepIcon({ state }: { state: StepState }) {
+  if (state === "done") {
+    return (
+      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
+        <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden>
+          <path
+            d="M2.5 6.5l2.5 2.5 4.5-5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    );
+  }
+  if (state === "active") {
+    return (
+      <span className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+    );
+  }
+  return <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-line-strong" />;
+}
+
+/** m:ss elapsed display. */
+function formatElapsed(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function FailedBanner({ error }: { error: string | null }) {
