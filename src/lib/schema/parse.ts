@@ -24,7 +24,7 @@ export interface SchemaRelation {
   to: string; // referenced table (the "one" side)
 }
 
-export type SchemaSource = "prisma" | "sql" | "mixed" | "none";
+export type SchemaSource = "prisma" | "sql" | "rails" | "mixed" | "none";
 
 export interface SchemaModel {
   tables: SchemaTable[];
@@ -252,6 +252,125 @@ function markPk(columns: SchemaColumn[], name: string) {
   for (const c of columns) if (c.name === name) c.pk = true;
 }
 
+/** Crude English pluralization — enough to map `t.references "user"` → "users". */
+function pluralize(word: string): string {
+  if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + "ies";
+  if (/(s|x|z|ch|sh)$/i.test(word)) return word + "es";
+  return word + "s";
+}
+
+/** Crude singularization — enough to map `add_foreign_key "x","users"` → "user_id". */
+function singularize(word: string): string {
+  if (/ies$/i.test(word)) return word.slice(0, -3) + "y";
+  if (/(ses|xes|zes|ches|shes)$/i.test(word)) return word.slice(0, -2);
+  if (/s$/i.test(word)) return word.slice(0, -1);
+  return word;
+}
+
+// t.<method> forms that aren't plain columns.
+const RAILS_NON_COLUMN = new Set([
+  "index",
+  "references",
+  "belongs_to",
+  "foreign_key",
+  "check_constraint",
+  "timestamps",
+]);
+
+/**
+ * Parse a Rails `db/schema.rb` (or ActiveRecord migration) into tables and
+ * relationships. Rails tables get an implicit `id` primary key unless the table
+ * is declared with `id: false`.
+ */
+function parseRails(content: string): { tables: RawTable[]; relations: SchemaRelation[] } {
+  const lines = stripLineComments(content, "#").split("\n");
+  const tables: RawTable[] = [];
+  const relations: SchemaRelation[] = [];
+  const pendingFk: Array<{ table: string; column: string }> = [];
+
+  let cur: { name: string; columns: SchemaColumn[]; unique: Set<string> } | null = null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    if (!cur) {
+      const ct = line.match(/^create_table\s+[:"']?([A-Za-z0-9_]+)["']?(.*)$/);
+      if (ct) {
+        const name = ct[1];
+        const opts = ct[2];
+        cur = { name, columns: [], unique: new Set() };
+        if (!/\bid:\s*false\b/.test(opts)) {
+          cur.columns.push({ name: "id", type: "bigint", pk: true, fk: false, required: true, unique: false });
+        }
+        continue;
+      }
+      // add_foreign_key "from", "to", column: "..."
+      const fk = line.match(/^add_foreign_key\s+["']([^"']+)["']\s*,\s*["']([^"']+)["'](.*)$/);
+      if (fk) {
+        relations.push({ from: fk[1], to: fk[2] });
+        const colOpt = fk[3].match(/column:\s*["']([^"']+)["']/);
+        pendingFk.push({ table: fk[1], column: colOpt ? colOpt[1] : `${singularize(fk[2])}_id` });
+      }
+      continue;
+    }
+
+    // Inside a create_table block.
+    if (/^end\b/.test(line)) {
+      const t = cur;
+      for (const c of t.columns) if (t.unique.has(c.name)) c.unique = true;
+      tables.push({ name: t.name, columns: t.columns });
+      cur = null;
+      continue;
+    }
+
+    // t.index ["col"], unique: true
+    const idx = line.match(/^t\.index\s+\[([^\]]*)\](.*)$/);
+    if (idx) {
+      const cols = idx[1].split(",").map((s) => s.replace(/["'\s]/g, "")).filter(Boolean);
+      if (/\bunique:\s*true\b/.test(idx[2]) && cols.length === 1) cur.unique.add(cols[0]);
+      continue;
+    }
+
+    // t.references "user" / t.belongs_to "user" → adds a <name>_id FK column.
+    const ref = line.match(/^t\.(?:references|belongs_to)\s+[:"']([A-Za-z0-9_]+)["']?(.*)$/);
+    if (ref) {
+      const base = ref[1];
+      cur.columns.push({
+        name: `${base}_id`,
+        type: "bigint",
+        pk: false,
+        fk: true,
+        required: /\bnull:\s*false\b/.test(ref[2]),
+        unique: false,
+      });
+      relations.push({ from: cur.name, to: pluralize(base) });
+      continue;
+    }
+
+    // Generic column: t.<type> "name", opts
+    const col = line.match(/^t\.(\w+)\s+[:"']([A-Za-z0-9_]+)["']?(.*)$/);
+    if (col && !RAILS_NON_COLUMN.has(col[1])) {
+      cur.columns.push({
+        name: col[2],
+        type: col[1],
+        pk: false,
+        fk: false,
+        required: /\bnull:\s*false\b/.test(col[3]),
+        unique: false,
+      });
+    }
+  }
+
+  // Mark FK scalar columns discovered via add_foreign_key.
+  for (const p of pendingFk) {
+    const t = tables.find((x) => x.name === p.table);
+    if (t) for (const c of t.columns) if (c.name === p.column) c.fk = true;
+  }
+
+  return { tables, relations };
+}
+
 /** Dedup relations to one edge per unordered table pair. */
 function dedupRelations(relations: SchemaRelation[], tableNames: Set<string>): SchemaRelation[] {
   const seen = new Set<string>();
@@ -276,11 +395,26 @@ export function parseSchema(files: Array<{ path: string; content: string }>): Sc
   const allRelations: SchemaRelation[] = [];
   let sawPrisma = false;
   let sawSql = false;
+  let sawRails = false;
 
   for (const file of files) {
+    // Rails: schema.rb or ActiveRecord migrations (Ruby `create_table ... do |t|`).
+    const isRails =
+      /\.rb$/i.test(file.path) &&
+      (/ActiveRecord::Schema/.test(file.content) || /\bcreate_table\b/.test(file.content));
     const isPrisma = /\.prisma$/i.test(file.path) || /\bmodel\s+\w+\s*\{/.test(file.content);
-    const isSql = /\.sql$/i.test(file.path) || /create\s+table/i.test(file.content);
+    // SQL `CREATE TABLE`, but not the Ruby DSL we handle above.
+    const isSql =
+      !isRails && (/\.sql$/i.test(file.path) || /create\s+table\s+[`"'\w]/i.test(file.content));
 
+    if (isRails) {
+      const r = parseRails(file.content);
+      if (r.tables.length) {
+        sawRails = true;
+        allTables.push(...r.tables);
+        allRelations.push(...r.relations);
+      }
+    }
     if (isPrisma) {
       const r = parsePrisma(file.content);
       if (r.tables.length) {
@@ -315,8 +449,11 @@ export function parseSchema(files: Array<{ path: string; content: string }>): Sc
   const tableNames = new Set(tables.map((t) => t.name));
   const relations = dedupRelations(allRelations, tableNames);
 
+  const kinds = [sawPrisma && "prisma", sawSql && "sql", sawRails && "rails"].filter(
+    Boolean,
+  ) as Exclude<SchemaSource, "mixed" | "none">[];
   const source: SchemaSource =
-    sawPrisma && sawSql ? "mixed" : sawPrisma ? "prisma" : sawSql ? "sql" : "none";
+    kinds.length > 1 ? "mixed" : kinds.length === 1 ? kinds[0] : "none";
 
   return { tables, relations, source };
 }

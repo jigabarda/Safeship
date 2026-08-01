@@ -54,8 +54,9 @@ const MAX_TOTAL_BYTES = 48_000;
 const MAX_FILE_BYTES = 16_000;
 
 const SCHEMA_RULES = [
+  /(^|\/)schema\.(prisma|rb|sql)$/i, // the canonical schema file — highest priority
   /\.(prisma|sql)$/i,
-  /(^|\/)(migrations?|prisma)(\/|$)/i,
+  /(^|\/)(migrate|migrations?|prisma)(\/|$)/i, // Rails db/migrate, Prisma, etc.
   /(^|\/)schema\.[a-z]+$/i,
   /(^|\/)(models?|entities)(\/|$)/i,
   /\.entity\.[jt]s$/i,
