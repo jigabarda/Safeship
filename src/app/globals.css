@@ -44,6 +44,7 @@
   --color-brand-soft: var(--brand-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-instrument-serif);
   --radius-xl: var(--radius);
 }
 
@@ -53,6 +54,15 @@ body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Display headings use the serif. Its natural weight is 400, so we don't bold it
+   (a component that wants clean Geist instead can opt out with `font-sans`). */
+h1 {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
 }
 
 /* Thin, unobtrusive scrollbars inside scrollable panels. */

@@ -17,7 +17,7 @@ export default async function DashboardPage() {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
         <div className="flex max-w-md flex-col items-center gap-6 rounded-2xl border border-line bg-surface p-10 shadow-sm">
-          <h1 className="text-3xl font-semibold tracking-tight">Sign in to scan your repos</h1>
+          <h1 className="text-4xl">Sign in to scan your repos</h1>
           <p className="text-muted">
             Safeship reads your code to check it for leaked secrets and vulnerable
             dependencies. It only reads — it never attacks anything.
@@ -58,7 +58,7 @@ export default async function DashboardPage() {
 
       <main className="animate-in mx-auto flex w-full max-w-4xl flex-1 flex-col gap-10 px-6 py-10">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-3xl">
             Hi {session.user.username ?? session.user.name ?? "there"} 👋
           </h1>
           <p className="mt-1 text-muted">

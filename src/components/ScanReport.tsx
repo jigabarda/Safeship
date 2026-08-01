@@ -96,7 +96,7 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
       <main className="animate-in mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
         <div>
           <p className="text-sm text-muted">Security report</p>
-          <h1 className="mt-1 break-all text-2xl font-semibold tracking-tight">
+          <h1 className="mt-1 break-all font-sans text-2xl font-semibold tracking-tight">
             {data.repoFullName}
           </h1>
         </div>

@@ -29,7 +29,7 @@ export default async function AssistantPage() {
 
       <main className="animate-in mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Assistant</h1>
+          <h1 className="text-3xl">Assistant</h1>
           <p className="mt-1 text-muted">
             Ask about security, a specific finding, or your code. Replies stream in, and your
             past chats are saved on the left.

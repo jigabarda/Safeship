@@ -31,7 +31,7 @@ export default function Home() {
             Static code analysis only — we never attack anything
           </span>
 
-          <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
+          <h1 className="text-5xl leading-[1.05] sm:text-7xl">
             Is your code
             <br className="hidden sm:block" /> <span className="text-brand">safe to ship?</span>
           </h1>
