@@ -1,5 +1,5 @@
 // Ask the LLM to produce a corrected version of a single file that resolves one
-// finding, then validate it enough to trust opening a PR from it.
+// OR MORE findings in that file, then validate it enough to trust opening a PR.
 //
 // Unlike the rest of the app, this sends the file's REAL contents to the AI
 // provider (a redacted file couldn't be committed back). That's deliberate and
@@ -8,14 +8,18 @@
 import { z } from "zod";
 import type { LlmClient } from "@/lib/llm/types";
 
-export interface FixInput {
+/** A single issue to resolve, independent of which file it lives in. */
+export interface FixIssue {
   engine: string;
   ruleId: string;
   severity: string;
   title: string;
   rawMessage: string;
-  filePath: string;
   line: number | null;
+}
+
+export interface FixInput extends FixIssue {
+  filePath: string;
   fileContent: string;
 }
 
@@ -35,40 +39,57 @@ export function isFixablePath(path: string): boolean {
   return !UNFIXABLE_PATHS.test(path);
 }
 
-const SYSTEM_PROMPT = `You are a senior engineer fixing exactly ONE issue in a single source file. You are given the issue and the file's COMPLETE contents.
+function systemPrompt(issueCount: number): string {
+  const scope =
+    issueCount === 1
+      ? "fixing exactly ONE issue in a single source file"
+      : `fixing ${issueCount} issues in a single source file`;
+  return `You are a senior engineer ${scope}. You are given the issue(s) and the file's COMPLETE contents.
 
-Return the COMPLETE corrected file with the MINIMAL change that resolves this one issue — change nothing else. Preserve all other code, formatting, comments, and imports exactly as given.
+Return the COMPLETE corrected file with the MINIMAL changes that resolve the listed issue(s) — change nothing else. Preserve all other code, formatting, comments, and imports exactly as given.
 
-If the issue is a hardcoded secret/credential, remove the literal value and replace it with an environment-variable reference appropriate to the language (e.g. process.env.NAME, os.environ["NAME"]). NEVER invent a real secret value.
+If an issue is a hardcoded secret/credential, remove the literal value and replace it with an environment-variable reference appropriate to the language (e.g. process.env.NAME, os.environ["NAME"]). NEVER invent a real secret value.
 
-If you cannot safely resolve the issue by editing this one file alone (for example, it needs a dependency upgrade or changes across multiple files), set canFix to false and leave fixedContent empty.
+Fix as many of the listed issues as you safely can in this one file. If NONE can be safely resolved by editing this file alone (for example, they need a dependency upgrade or changes across several files), set canFix to false and leave fixedContent empty.
 
 Respond with STRICT JSON only (no markdown fences) matching exactly:
 {
   "canFix": boolean,
-  "summary": string,      // 1-2 sentences describing the change, for a PR description
+  "summary": string,      // 1-2 sentences describing what changed, for a PR description
   "fixedContent": string  // the ENTIRE corrected file; "" if canFix is false
 }`;
+}
 
-function buildUserPrompt(input: FixInput): string {
+function issueLines(issue: FixIssue, index?: number): string {
+  const prefix = index === undefined ? "" : `Issue ${index + 1}:\n`;
   return [
-    `Issue to fix:`,
-    `- Engine: ${input.engine}`,
-    `- Rule: ${input.ruleId}`,
-    `- Severity: ${input.severity}`,
-    `- Title: ${input.title}`,
-    input.line ? `- Around line: ${input.line}` : "",
-    `- Details: ${input.rawMessage}`,
-    ``,
-    `File: ${input.filePath}`,
-    "```",
-    input.fileContent,
-    "```",
-    ``,
-    `Return the JSON object now.`,
+    prefix +
+      `- Engine: ${issue.engine}`,
+    `- Rule: ${issue.ruleId}`,
+    `- Severity: ${issue.severity}`,
+    `- Title: ${issue.title}`,
+    issue.line ? `- Around line: ${issue.line}` : "",
+    `- Details: ${issue.rawMessage}`,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function buildUserPrompt(filePath: string, fileContent: string, issues: FixIssue[]): string {
+  const issuesBlock =
+    issues.length === 1
+      ? `Issue to fix:\n${issueLines(issues[0])}`
+      : `Issues to fix (${issues.length}):\n${issues.map((iss, i) => issueLines(iss, i)).join("\n\n")}`;
+  return [
+    issuesBlock,
+    ``,
+    `File: ${filePath}`,
+    "```",
+    fileContent,
+    "```",
+    ``,
+    `Return the JSON object now.`,
+  ].join("\n");
 }
 
 const schema = z.object({
@@ -86,15 +107,21 @@ function extractJson(raw: string): string {
 }
 
 /**
- * Generate and sanity-check a fix. Returns canFix=false (never throws on a weak
- * model response) when the output can't be trusted, so the caller degrades to
- * "couldn't auto-fix" instead of committing garbage.
+ * Generate and sanity-check a fix for all `issues` in one file. Returns
+ * canFix=false (never throws on a weak model response) when the output can't be
+ * trusted, so the caller degrades to "couldn't auto-fix" instead of committing
+ * garbage.
  */
-export async function generateFix(client: LlmClient, input: FixInput): Promise<FixResult> {
+export async function generateFileFix(
+  client: LlmClient,
+  filePath: string,
+  fileContent: string,
+  issues: FixIssue[],
+): Promise<FixResult> {
   const raw = await client.complete(
     [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(input) },
+      { role: "system", content: systemPrompt(issues.length) },
+      { role: "user", content: buildUserPrompt(filePath, fileContent, issues) },
     ],
     { temperature: 0.1, json: true, maxTokens: 4000 },
   );
@@ -117,13 +144,26 @@ export async function generateFix(client: LlmClient, input: FixInput): Promise<F
   // Guard against a truncated or wholesale-rewritten file: the fix should be a
   // near-complete copy of the original. Reject anything that lost most of the
   // file or is identical (no actual change).
-  const original = input.fileContent;
-  if (fixedContent.trim() === original.trim()) {
+  if (fixedContent.trim() === fileContent.trim()) {
     return { canFix: false, summary, fixedContent: "" };
   }
-  if (fixedContent.length < original.length * 0.5) {
+  if (fixedContent.length < fileContent.length * 0.5) {
     return { canFix: false, summary, fixedContent: "" };
   }
 
   return { canFix: true, summary, fixedContent };
+}
+
+/** Single-finding convenience wrapper used by the per-finding "Fix" button. */
+export async function generateFix(client: LlmClient, input: FixInput): Promise<FixResult> {
+  return generateFileFix(client, input.filePath, input.fileContent, [
+    {
+      engine: input.engine,
+      ruleId: input.ruleId,
+      severity: input.severity,
+      title: input.title,
+      rawMessage: input.rawMessage,
+      line: input.line,
+    },
+  ]);
 }
