@@ -16,6 +16,7 @@ import {
   type RepoTreeEntry,
 } from "@/lib/github/repoFiles";
 import { redactText } from "@/lib/llm/index";
+import { parseSchema, type SchemaModel } from "@/lib/schema/parse";
 
 export type AdvisorTool = "schema" | "stack" | "optimize";
 
@@ -186,8 +187,33 @@ export async function collectSchemaFiles(
   return files.length > 0 ? { files, truncated } : null;
 }
 
+/**
+ * One pass for the unified Schema review: read the schema files once, parse them
+ * into a diagram model (deterministic, for the visualizer), AND prepare a
+ * redacted/clipped context for the AI review. Returns null when there's no
+ * schema in the repo.
+ */
+export async function collectSchemaContext(
+  fullName: string,
+  token: string,
+): Promise<{ ctx: CollectedContext; model: SchemaModel } | null> {
+  const collected = await collectSchemaFiles(fullName, token);
+  if (!collected) return null;
+
+  const model = parseSchema(collected.files);
+  const files = collected.files.map((f) => ({
+    path: f.path,
+    content: redactText(f.content.slice(0, MAX_FILE_BYTES)).text,
+  }));
+  const summary = `Database schema (${model.source}): ${model.tables.length} table(s), ${model.relations.length} relationship(s) detected.`;
+
+  return { ctx: { files, summary, truncated: collected.truncated }, model };
+}
+
 const SYSTEM_PROMPTS: Record<AdvisorTool, string> = {
-  schema: `You are a senior database engineer reviewing a project's schema for a developer who may not be a DB expert. Assess table/model relationships, normalization, indexing, naming, and data-integrity risks. Be specific and cite the files/models. Be honest but encouraging — plainly say whether the schema is well-designed.`,
+  schema: `You are a senior database engineer reviewing a project's schema for a developer who may not be a DB expert. The user is also shown a visual ER diagram of these tables and relationships, so make your advice easy to map onto specific tables/columns.
+
+Assess table/model relationships, normalization, indexing, naming, and data-integrity risks. Name the exact tables and columns involved. Include a "## What to fix" section with a prioritized, concrete checklist the user can act on. Be honest but encouraging — plainly say whether the schema is well-designed.`,
   stack: `You are a pragmatic staff engineer advising on tech-stack choices. Given the project's manifests, config, and structure, assess whether the current stack is a sound fit, note strengths and risks, and recommend concrete improvements or alternatives (only when they'd genuinely help). Avoid hype; respect what already works.`,
   optimize: `You are a performance- and maintainability-minded engineer. From the project's manifests, config, and structure, suggest concrete optimizations: dependency cleanup, build/config improvements, structural refactors, and likely performance wins. Prioritize high-impact, low-risk changes.`,
 };

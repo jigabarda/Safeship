@@ -25,9 +25,9 @@ export default async function AdvisorPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Advisor</h1>
           <p className="mt-1 text-muted">
-            Visualize a repository&apos;s database schema as an ER diagram, or have the AI review
-            its schema design, tech stack, and optimization opportunities. Advice and diagrams —
-            not a security scan.
+            Have the AI review a repository&apos;s schema design, tech stack, or optimization
+            opportunities. The schema review also draws your tables and relationships so you can
+            see what to fix. Advice — not a security scan.
           </p>
         </div>
 

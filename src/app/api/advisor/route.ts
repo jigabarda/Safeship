@@ -7,9 +7,11 @@ import {
   ADVISOR_META,
   buildAdvisorMessages,
   collectContext,
+  collectSchemaContext,
   isAdvisorTool,
   parseAdvisorResult,
 } from "@/lib/advisor/analyze";
+import type { SchemaModel } from "@/lib/schema/parse";
 
 // Run one advisor tool (schema / stack / optimize) against a repo the signed-in
 // user can access. Reads files via the GitHub API with the user's own token,
@@ -53,9 +55,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = await collectContext(tool, repoFullName, user.accessToken);
-    if (!ctx) {
-      return Response.json({ error: ADVISOR_META[tool].emptyMessage }, { status: 422 });
+    // Schema review is unified: parse the schema for the visualizer AND send it
+    // to the AI for suggestions, so users see the diagram and what to fix.
+    let model: SchemaModel | undefined;
+    let ctx;
+    if (tool === "schema") {
+      const bundle = await collectSchemaContext(repoFullName, user.accessToken);
+      if (!bundle) {
+        return Response.json({ error: ADVISOR_META.schema.emptyMessage }, { status: 422 });
+      }
+      ctx = bundle.ctx;
+      model = bundle.model;
+    } else {
+      ctx = await collectContext(tool, repoFullName, user.accessToken);
+      if (!ctx) {
+        return Response.json({ error: ADVISOR_META[tool].emptyMessage }, { status: 422 });
+      }
     }
 
     const raw = await llm.complete(buildAdvisorMessages(tool, ctx), {
@@ -71,6 +86,7 @@ export async function POST(request: Request) {
       rating: result.rating,
       headline: result.headline,
       markdown: result.markdown,
+      model,
       filesConsidered: ctx.files.map((f) => f.path),
       truncated: ctx.truncated,
     });

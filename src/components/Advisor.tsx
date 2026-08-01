@@ -6,39 +6,28 @@ import type { SchemaModel } from "@/lib/schema/parse";
 import { Markdown } from "@/components/Markdown";
 import { SchemaDiagram } from "@/components/SchemaDiagram";
 
-type Tool = "map" | "schema" | "stack" | "optimize";
+type Tool = "schema" | "stack" | "optimize";
 
 const TOOLS: Array<{ value: Tool; label: string; blurb: string }> = [
-  { value: "map", label: "Schema map", blurb: "Visualize your tables and their relationships." },
-  { value: "schema", label: "Schema review", blurb: "AI review of the schema's design." },
+  { value: "schema", label: "Schema review", blurb: "Visualize the tables and get design fixes." },
   { value: "stack", label: "Tech stack", blurb: "Is the stack a good fit? Recommendations." },
   { value: "optimize", label: "Optimization", blurb: "Structural, dependency & performance cleanups." },
 ];
 
-/** Deterministic ER-diagram result (no AI). */
-interface MapResult {
-  kind: "map";
-  repoFullName: string;
-  model: SchemaModel;
-  filesConsidered: string[];
-  truncated: boolean;
-}
-
-/** AI review result. */
-interface ReviewResult {
-  kind: "review";
+/** AI review result. Schema reviews also carry a parsed diagram model. */
+interface Result {
   tool: Tool;
   repoFullName: string;
   rating: "good" | "fair" | "poor";
   headline: string;
   markdown: string;
+  /** Present for schema reviews — drives the ER diagram. */
+  model?: SchemaModel;
   filesConsidered: string[];
   truncated: boolean;
 }
 
-type Result = MapResult | ReviewResult;
-
-const RATING_META: Record<ReviewResult["rating"], { label: string; cls: string }> = {
+const RATING_META: Record<Result["rating"], { label: string; cls: string }> = {
   good: {
     label: "Looking good",
     cls: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300",
@@ -56,7 +45,7 @@ const RATING_META: Record<ReviewResult["rating"], { label: string; cls: string }
 export function Advisor({ repos }: { repos: Repo[] }) {
   const [query, setQuery] = useState("");
   const [repoFullName, setRepoFullName] = useState<string>(repos[0]?.fullName ?? "");
-  const [tool, setTool] = useState<Tool>("map");
+  const [tool, setTool] = useState<Tool>("schema");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -73,18 +62,17 @@ export function Advisor({ repos }: { repos: Repo[] }) {
     setError(null);
     setResult(null);
     try {
-      const isMap = tool === "map";
-      const res = await fetch(isMap ? "/api/advisor/schema-map" : "/api/advisor", {
+      const res = await fetch("/api/advisor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isMap ? { repoFullName } : { repoFullName, tool }),
+        body: JSON.stringify({ repoFullName, tool }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? `Request failed (${res.status})`);
         return;
       }
-      setResult(isMap ? { kind: "map", ...data } : { kind: "review", ...data });
+      setResult(data as Result);
     } catch {
       setError("Could not reach the advisor. Check your connection.");
     } finally {
@@ -138,7 +126,7 @@ export function Advisor({ repos }: { repos: Repo[] }) {
       {/* Tool picker */}
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium">What should the AI review?</span>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-3">
           {TOOLS.map((t) => (
             <button
               key={t.value}
@@ -163,25 +151,12 @@ export function Advisor({ repos }: { repos: Repo[] }) {
           disabled={running || !repoFullName}
           className="self-start rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
         >
-          {running
-            ? tool === "map"
-              ? "Drawing…"
-              : "Analyzing…"
-            : tool === "map"
-              ? "Draw diagram"
-              : "Run review"}
+          {running ? "Analyzing…" : "Run review"}
         </button>
-        {tool === "map" ? (
-          <p className="text-xs text-muted">
-            Reads the schema from <span className="font-mono">{repoFullName || "the repo"}</span> and
-            draws it — done locally, nothing is sent to the AI provider.
-          </p>
-        ) : (
-          <p className="text-xs text-muted">
-            To review your code, Safeship sends the relevant files from{" "}
-            <span className="font-mono">{repoFullName || "the repo"}</span> to the AI provider.
-          </p>
-        )}
+        <p className="text-xs text-muted">
+          To review your code, Safeship sends the relevant files from{" "}
+          <span className="font-mono">{repoFullName || "the repo"}</span> to the AI provider.
+        </p>
       </div>
 
       {error && (
@@ -193,30 +168,13 @@ export function Advisor({ repos }: { repos: Repo[] }) {
       {running && !result && (
         <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-6 text-sm text-muted shadow-sm">
           <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-          {tool === "map" ? "Reading the schema and drawing the diagram…" : "Reading the repo and writing a review…"}
+          {tool === "schema"
+            ? "Reading the schema, drawing it, and writing suggestions…"
+            : "Reading the repo and writing a review…"}
         </div>
       )}
 
-      {result?.kind === "map" && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-6">
-          <SchemaDiagram model={result.model} />
-          {result.filesConsidered.length > 0 && (
-            <details className="border-t border-line pt-3 text-xs text-muted">
-              <summary className="cursor-pointer select-none font-medium">
-                Parsed from ({result.filesConsidered.length})
-                {result.truncated && " — large repo, tree was truncated"}
-              </summary>
-              <ul className="mt-2 flex flex-col gap-0.5 font-mono">
-                {result.filesConsidered.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
-
-      {result?.kind === "review" && (
+      {result && (
         <article className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
             <span
@@ -226,6 +184,15 @@ export function Advisor({ repos }: { repos: Repo[] }) {
             </span>
             <p className="text-sm font-medium">{result.headline}</p>
           </div>
+
+          {result.model && result.model.tables.length > 0 && (
+            <div className="border-t border-line pt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
+                Schema overview
+              </p>
+              <SchemaDiagram model={result.model} />
+            </div>
+          )}
 
           <div className="border-t border-line pt-4">
             <Markdown text={result.markdown} />
