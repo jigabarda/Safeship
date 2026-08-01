@@ -5,7 +5,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { SignInButton } from "@/components/AuthButtons";
 import { RepoList } from "@/components/RepoList";
 import { ScanList } from "@/components/ScanList";
-import { fetchRepos } from "@/lib/github/repos";
+import { fetchReposCached } from "@/lib/github/repos";
 import { failStaleScans } from "@/lib/scan/staleScans";
 
 const RECENT_SCAN_COUNT = 6;
@@ -32,14 +32,14 @@ export default async function DashboardPage() {
   }
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
-  const { repos, error } = user?.accessToken
-    ? await fetchRepos(user.accessToken)
-    : { repos: [], error: "No GitHub token on file — please sign in again." };
 
-  // Clean up any abandoned scans, then load a handful of the most recent to show
-  // right here on the dashboard (with a link to the full history).
-  await failStaleScans(session.user.id);
-  const [recentScans, scanCount] = await Promise.all([
+  // Fetch repos (cached), expire abandoned scans, and load recent scans all at
+  // once instead of one after another.
+  const [reposResult, , recentScans, scanCount] = await Promise.all([
+    user?.accessToken
+      ? fetchReposCached(session.user.id, user.accessToken)
+      : Promise.resolve({ repos: [], error: "No GitHub token on file — please sign in again." }),
+    failStaleScans(session.user.id),
     db.scan.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
@@ -47,6 +47,7 @@ export default async function DashboardPage() {
     }),
     db.scan.count({ where: { userId: session.user.id } }),
   ]);
+  const { repos, error } = reposResult;
 
   return (
     <>

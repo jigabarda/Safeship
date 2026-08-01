@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { AppHeader } from "@/components/AppHeader";
 import { Advisor, type RecentRun, type AdvisorToolValue } from "@/components/Advisor";
-import { fetchRepos } from "@/lib/github/repos";
+import { fetchReposCached } from "@/lib/github/repos";
 import type { SchemaModel } from "@/lib/schema/parse";
 
 export default async function AdvisorPage() {
@@ -19,7 +19,7 @@ export default async function AdvisorPage() {
     }),
   ]);
   const { repos, error } = user?.accessToken
-    ? await fetchRepos(user.accessToken)
+    ? await fetchReposCached(session.user.id, user.accessToken)
     : { repos: [], error: "No GitHub token on file — please sign in again." };
 
   const recent: RecentRun[] = runs.map((r) => ({

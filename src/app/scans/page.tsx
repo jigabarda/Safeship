@@ -10,14 +10,15 @@ export default async function ScansPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/dashboard");
 
-  // Clean up scans abandoned by a lost runner before listing them.
-  await failStaleScans(session.user.id);
-
-  const scans = await db.scan.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  // Clean up abandoned scans and load the list together.
+  const [, scans] = await Promise.all([
+    failStaleScans(session.user.id),
+    db.scan.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  ]);
 
   return (
     <>
