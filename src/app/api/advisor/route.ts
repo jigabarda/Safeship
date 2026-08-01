@@ -1,0 +1,94 @@
+import { auth } from "@/auth";
+import { db } from "@/lib/db";
+import { GitHubApiError } from "@/lib/github/repoFiles";
+import { getLlmClient } from "@/lib/llm/index";
+import { LlmRateLimitError } from "@/lib/llm/types";
+import {
+  ADVISOR_META,
+  buildAdvisorMessages,
+  collectContext,
+  isAdvisorTool,
+  parseAdvisorResult,
+} from "@/lib/advisor/analyze";
+
+// Run one advisor tool (schema / stack / optimize) against a repo the signed-in
+// user can access. Reads files via the GitHub API with the user's own token,
+// then asks the LLM for a review. Stateless — nothing is persisted.
+
+interface Body {
+  repoFullName?: string;
+  tool?: string;
+}
+
+export async function POST(request: Request) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return Response.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  let body: Body;
+  try {
+    body = (await request.json()) as Body;
+  } catch {
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const repoFullName = body.repoFullName?.trim();
+  if (!repoFullName || !/^[^/\s]+\/[^/\s]+$/.test(repoFullName)) {
+    return Response.json({ error: "A valid repo (owner/name) is required." }, { status: 400 });
+  }
+  if (!body.tool || !isAdvisorTool(body.tool)) {
+    return Response.json({ error: "Unknown advisor tool." }, { status: 400 });
+  }
+  const tool = body.tool;
+
+  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  if (!user?.accessToken) {
+    return Response.json({ error: "No GitHub token on file — please sign in again." }, { status: 401 });
+  }
+
+  const llm = getLlmClient();
+  if (!llm) {
+    return Response.json({ error: "The AI advisor isn't configured right now." }, { status: 503 });
+  }
+
+  try {
+    const ctx = await collectContext(tool, repoFullName, user.accessToken);
+    if (!ctx) {
+      return Response.json({ error: ADVISOR_META[tool].emptyMessage }, { status: 422 });
+    }
+
+    const raw = await llm.complete(buildAdvisorMessages(tool, ctx), {
+      temperature: 0.3,
+      json: true,
+      maxTokens: 1500,
+    });
+    const result = parseAdvisorResult(raw);
+
+    return Response.json({
+      tool,
+      repoFullName,
+      rating: result.rating,
+      headline: result.headline,
+      markdown: result.markdown,
+      filesConsidered: ctx.files.map((f) => f.path),
+      truncated: ctx.truncated,
+    });
+  } catch (e) {
+    if (e instanceof LlmRateLimitError) {
+      return Response.json(
+        { error: "The AI is busy right now (rate limit). Give it a moment and try again." },
+        { status: 429 },
+      );
+    }
+    if (e instanceof GitHubApiError) {
+      const msg =
+        e.status === 404
+          ? "That repository couldn't be read. It may be empty or you may have lost access."
+          : `GitHub error (${e.status}). Try signing out and back in.`;
+      return Response.json({ error: msg }, { status: e.status === 404 ? 404 : 502 });
+    }
+    console.warn(`[advisor:${tool}] failed: ${(e as Error).message}`);
+    return Response.json({ error: "The advisor hit an error. Please try again." }, { status: 502 });
+  }
+}
