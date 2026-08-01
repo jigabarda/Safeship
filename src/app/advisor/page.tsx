@@ -25,8 +25,9 @@ export default async function AdvisorPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Advisor</h1>
           <p className="mt-1 text-muted">
-            Have the AI read a repository and review its schema, tech stack, or
-            opportunities to optimize. This is advice, not a security scan.
+            Visualize a repository&apos;s database schema as an ER diagram, or have the AI review
+            its schema design, tech stack, and optimization opportunities. Advice and diagrams —
+            not a security scan.
           </p>
         </div>
 

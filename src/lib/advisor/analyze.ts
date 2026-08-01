@@ -157,6 +157,35 @@ export async function collectContext(
   return { files, summary, truncated };
 }
 
+/**
+ * Collect schema/DB files with their FULL contents (no redaction, no slicing) —
+ * used by the deterministic ER-diagram parser, which needs complete structure.
+ * Returns null when the repo has no schema files.
+ */
+export async function collectSchemaFiles(
+  fullName: string,
+  token: string,
+): Promise<{ files: Array<{ path: string; content: string }>; truncated: boolean } | null> {
+  const branch = await getDefaultBranch(fullName, token);
+  const { files: tree, truncated } = await listRepoTree(fullName, branch, token);
+  const paths = pickByRules(tree, SCHEMA_RULES);
+  if (paths.length === 0) return null;
+
+  const files: Array<{ path: string; content: string }> = [];
+  let usedBytes = 0;
+  const PER_FILE = 60_000;
+  const TOTAL = 200_000;
+  for (const path of paths) {
+    if (files.length >= 20 || usedBytes >= TOTAL) break;
+    const file = await getFileContent(fullName, path, token, branch);
+    if (!file) continue;
+    const content = file.content.slice(0, PER_FILE);
+    files.push({ path, content });
+    usedBytes += content.length;
+  }
+  return files.length > 0 ? { files, truncated } : null;
+}
+
 const SYSTEM_PROMPTS: Record<AdvisorTool, string> = {
   schema: `You are a senior database engineer reviewing a project's schema for a developer who may not be a DB expert. Assess table/model relationships, normalization, indexing, naming, and data-integrity risks. Be specific and cite the files/models. Be honest but encouraging — plainly say whether the schema is well-designed.`,
   stack: `You are a pragmatic staff engineer advising on tech-stack choices. Given the project's manifests, config, and structure, assess whether the current stack is a sound fit, note strengths and risks, and recommend concrete improvements or alternatives (only when they'd genuinely help). Avoid hype; respect what already works.`,
