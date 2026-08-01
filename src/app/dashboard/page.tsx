@@ -4,7 +4,11 @@ import { db } from "@/lib/db";
 import { AppHeader } from "@/components/AppHeader";
 import { SignInButton } from "@/components/AuthButtons";
 import { RepoList } from "@/components/RepoList";
+import { ScanList } from "@/components/ScanList";
 import { fetchRepos } from "@/lib/github/repos";
+import { failStaleScans } from "@/lib/scan/staleScans";
+
+const RECENT_SCAN_COUNT = 6;
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -31,6 +35,18 @@ export default async function DashboardPage() {
   const { repos, error } = user?.accessToken
     ? await fetchRepos(user.accessToken)
     : { repos: [], error: "No GitHub token on file — please sign in again." };
+
+  // Clean up any abandoned scans, then load a handful of the most recent to show
+  // right here on the dashboard (with a link to the full history).
+  await failStaleScans(session.user.id);
+  const [recentScans, scanCount] = await Promise.all([
+    db.scan.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      take: RECENT_SCAN_COUNT,
+    }),
+    db.scan.count({ where: { userId: session.user.id } }),
+  ]);
 
   return (
     <>
@@ -63,16 +79,26 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        <p className="text-sm text-muted">
-          Looking for a previous result? See{" "}
-          <Link
-            href="/scans"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            Scans
-          </Link>
-          .
-        </p>
+        <section className="flex flex-col gap-4">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold">Recent scans</h2>
+            {scanCount > RECENT_SCAN_COUNT && (
+              <Link
+                href="/scans"
+                className="text-sm font-medium text-muted underline underline-offset-4 transition-colors hover:text-foreground"
+              >
+                View all ({scanCount})
+              </Link>
+            )}
+          </div>
+          {recentScans.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-line-strong bg-surface/50 px-4 py-8 text-center text-sm text-muted">
+              No scans yet. Pick a repository above and hit <strong>Scan</strong>.
+            </p>
+          ) : (
+            <ScanList scans={recentScans} />
+          )}
+        </section>
       </main>
     </>
   );

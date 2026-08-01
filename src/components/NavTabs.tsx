@@ -7,9 +7,9 @@ import { usePathname } from "next/navigation";
 // from AppHeader so the header itself can stay a server component (it renders
 // the sign-out server action).
 const TABS: Array<{ href: string; label: string; match: string[] }> = [
-  { href: "/dashboard", label: "Repositories", match: ["/dashboard"] },
-  // A single report lives at /scan/[id], so it highlights the Scans tab too.
-  { href: "/scans", label: "Scans", match: ["/scans", "/scan/"] },
+  // Recent scans live on the dashboard; a report (/scan/[id]) and the full
+  // history (/scans) both keep the Repositories tab active.
+  { href: "/dashboard", label: "Repositories", match: ["/dashboard", "/scans", "/scan/"] },
   { href: "/advisor", label: "Advisor", match: ["/advisor"] },
   { href: "/assistant", label: "Assistant", match: ["/assistant"] },
 ];
