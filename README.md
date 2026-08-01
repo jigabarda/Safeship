@@ -4,6 +4,8 @@
 
 > **Safety boundary:** Safeship performs **static code analysis only**. It reads source code you authorize via GitHub. It never attacks, probes, port-scans, or sends traffic to any live system.
 
+Beyond scanning, Safeship also includes AI helpers: an **Advisor** that reviews a repo's schema, tech stack, and optimization opportunities; an **Assistant** chat for security and code questions; and **Fix with AI**, which opens a pull request that resolves a finding. See [AI features & your data](#ai-features--your-data) for how each handles your code.
+
 ---
 
 ## Architecture
@@ -40,7 +42,7 @@ Because the engines run on Linux, all three run in production — including semg
 | Secret scanning | [gitleaks](https://github.com/gitleaks/gitleaks) |
 | Code (SAST) | [semgrep](https://semgrep.dev) |
 | Dependency vulns | [osv-scanner](https://github.com/google/osv-scanner) |
-| AI explanations | Groq (cloud) or Ollama (local) — swappable via `LLM_PROVIDER` |
+| AI (explain / advise / fix) | Groq (cloud) or Ollama (local) — swappable via `LLM_PROVIDER` |
 
 ---
 
@@ -62,6 +64,21 @@ The safety score starts at 100 and subtracts weighted penalties per finding (cri
 
 ---
 
+## AI features & your data
+
+The scan pipeline above is privacy-preserving: secrets are redacted on the runner and **only redacted, per-finding context** is ever sent to the LLM. The AI helpers work differently — they read files, so they need to send file contents to the AI provider (Groq in the cloud, or a fully-local Ollama). Nothing is sent until you choose to run one of them.
+
+| Feature | Where it lives | What it sends to the AI |
+|---|---|---|
+| **Explanations** | opening a finding | Just that finding's redacted message — no file contents |
+| **Assistant** | `/assistant` | Only what you type (plus, if you're viewing a scan, a short list of finding titles) |
+| **Advisor** | `/advisor` | The relevant files it reviews (schema, manifests, config), passed through the secret redactor first |
+| **Fix with AI** | a finding → *Fix & open PR* | The **full, un-redacted file** being fixed — required to commit a valid file back — then opens a PR on a new branch for you to review |
+
+All GitHub reads and pull requests use **your own OAuth token**, so the app only ever touches repositories you can access, and any PR is attributed to you. Fixes and advice are AI-generated — always review the diff before merging.
+
+---
+
 ## Project structure
 
 ```
@@ -70,12 +87,15 @@ Safeship/
 ├── scanner/run.ts               # standalone scanner CLI the workflow invokes
 ├── prisma/schema.prisma         # User / Scan / Finding models
 └── src/
-    ├── app/                     # pages (/, /dashboard, /scan/[id]) + API routes
-    │   └── api/scan/            # route.ts (dispatch), callback/route.ts (persist)
+    ├── app/                     # pages (/dashboard, /scan/[id], /advisor, /assistant) + API routes
+    │   └── api/                 # scan/, advisor/, assistant/, findings/[id]/{explain,fix}
     ├── auth.ts                  # NextAuth v5 config (GitHub)
-    ├── components/              # RepoList, ScanReport, AuthButtons, Logo
+    ├── components/              # RepoList, ScanReport, Advisor, AssistantChat, Markdown
     └── lib/
         ├── engines/             # gitleaks / semgrep / osv wrappers
-        ├── llm/                 # swappable LLM layer + secret redaction
-        └── scan/                # engineScan (core), dispatch, scoring
+        ├── github/              # read files & open PRs with the user's token
+        ├── advisor/             # schema / stack / optimize analysis
+        ├── fix/                 # AI fix generation
+        ├── llm/                 # swappable LLM layer (explain + chat) + redaction
+        └── scan/                # engineScan (core), dispatch, scoring, area
 ```
