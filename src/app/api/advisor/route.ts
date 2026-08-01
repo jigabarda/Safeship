@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { GitHubApiError } from "@/lib/github/repoFiles";
@@ -79,16 +80,33 @@ export async function POST(request: Request) {
       maxTokens: 1500,
     });
     const result = parseAdvisorResult(raw);
+    const filesConsidered = ctx.files.map((f) => f.path);
+
+    // Save the review so it shows up in the user's recent activity.
+    const run = await db.advisorRun.create({
+      data: {
+        userId: session.user.id,
+        repoFullName,
+        tool,
+        rating: result.rating,
+        headline: result.headline,
+        markdown: result.markdown,
+        model: model ? (model as unknown as Prisma.InputJsonValue) : undefined,
+        filesConsidered: filesConsidered as unknown as Prisma.InputJsonValue,
+      },
+    });
 
     return Response.json({
+      id: run.id,
       tool,
       repoFullName,
       rating: result.rating,
       headline: result.headline,
       markdown: result.markdown,
       model,
-      filesConsidered: ctx.files.map((f) => f.path),
+      filesConsidered,
       truncated: ctx.truncated,
+      createdAt: run.createdAt.toISOString(),
     });
   } catch (e) {
     if (e instanceof LlmRateLimitError) {

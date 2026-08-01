@@ -2,17 +2,37 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { AppHeader } from "@/components/AppHeader";
-import { Advisor } from "@/components/Advisor";
+import { Advisor, type RecentRun, type AdvisorToolValue } from "@/components/Advisor";
 import { fetchRepos } from "@/lib/github/repos";
+import type { SchemaModel } from "@/lib/schema/parse";
 
 export default async function AdvisorPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/dashboard");
 
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  const [user, runs] = await Promise.all([
+    db.user.findUnique({ where: { id: session.user.id } }),
+    db.advisorRun.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+  ]);
   const { repos, error } = user?.accessToken
     ? await fetchRepos(user.accessToken)
     : { repos: [], error: "No GitHub token on file — please sign in again." };
+
+  const recent: RecentRun[] = runs.map((r) => ({
+    id: r.id,
+    repoFullName: r.repoFullName,
+    tool: r.tool as AdvisorToolValue,
+    rating: r.rating as RecentRun["rating"],
+    headline: r.headline,
+    markdown: r.markdown,
+    model: (r.model as unknown as SchemaModel | null) ?? null,
+    filesConsidered: (r.filesConsidered as unknown as string[]) ?? [],
+    createdAt: r.createdAt.toISOString(),
+  }));
 
   return (
     <>
@@ -36,7 +56,7 @@ export default async function AdvisorPage() {
             {error}
           </p>
         ) : (
-          <Advisor repos={repos} />
+          <Advisor repos={repos} recent={recent} />
         )}
       </main>
     </>

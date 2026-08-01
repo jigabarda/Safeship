@@ -7,6 +7,20 @@ import { Markdown } from "@/components/Markdown";
 import { SchemaDiagram } from "@/components/SchemaDiagram";
 
 type Tool = "schema" | "stack" | "optimize";
+/** Exported for the server page that hydrates recent runs. */
+export type AdvisorToolValue = Tool;
+
+export interface RecentRun {
+  id: string;
+  repoFullName: string;
+  tool: Tool;
+  rating: "good" | "fair" | "poor";
+  headline: string;
+  markdown: string;
+  model?: SchemaModel | null;
+  filesConsidered: string[];
+  createdAt: string;
+}
 
 const TOOLS: Array<{ value: Tool; label: string; blurb: string }> = [
   { value: "schema", label: "Schema review", blurb: "Visualize the tables and get design fixes." },
@@ -42,6 +56,27 @@ type ApplyState =
   | { status: "skipped"; note: string }
   | { status: "error"; error: string };
 
+const TOOL_LABEL: Record<Tool, string> = {
+  schema: "Schema",
+  stack: "Stack",
+  optimize: "Optimize",
+};
+
+const RATING_DOT: Record<Result["rating"], string> = {
+  good: "bg-emerald-500",
+  fair: "bg-amber-500",
+  poor: "bg-rose-500",
+};
+
+/** Deterministic (locale + UTC) so SSR and client render the same string. */
+function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 const RATING_META: Record<Result["rating"], { label: string; cls: string }> = {
   good: {
     label: "Looking good",
@@ -57,7 +92,7 @@ const RATING_META: Record<Result["rating"], { label: string; cls: string }> = {
   },
 };
 
-export function Advisor({ repos }: { repos: Repo[] }) {
+export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; recent?: RecentRun[] }) {
   const [query, setQuery] = useState("");
   const [repoFullName, setRepoFullName] = useState<string>(repos[0]?.fullName ?? "");
   const [tool, setTool] = useState<Tool>("schema");
@@ -65,6 +100,24 @@ export function Advisor({ repos }: { repos: Repo[] }) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [apply, setApply] = useState<ApplyState>({ status: "idle" });
+  const [recent, setRecent] = useState<RecentRun[]>(initialRecent);
+
+  function openRecent(r: RecentRun) {
+    setError(null);
+    setApply({ status: "idle" });
+    setRepoFullName(r.repoFullName);
+    setTool(r.tool);
+    setResult({
+      tool: r.tool,
+      repoFullName: r.repoFullName,
+      rating: r.rating,
+      headline: r.headline,
+      markdown: r.markdown,
+      model: r.model ?? undefined,
+      filesConsidered: r.filesConsidered,
+      truncated: false,
+    });
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -122,6 +175,20 @@ export function Advisor({ repos }: { repos: Repo[] }) {
         return;
       }
       setResult(data as Result);
+      if (data.id) {
+        const entry: RecentRun = {
+          id: data.id,
+          repoFullName: data.repoFullName,
+          tool: data.tool,
+          rating: data.rating,
+          headline: data.headline,
+          markdown: data.markdown,
+          model: data.model ?? null,
+          filesConsidered: data.filesConsidered ?? [],
+          createdAt: data.createdAt ?? new Date().toISOString(),
+        };
+        setRecent((prev) => [entry, ...prev.filter((r) => r.id !== entry.id)].slice(0, 12));
+      }
     } catch {
       setError("Could not reach the advisor. Check your connection.");
     } finally {
@@ -139,6 +206,34 @@ export function Advisor({ repos }: { repos: Repo[] }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {recent.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Recent reviews</span>
+          <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+            {recent.map((r) => (
+              <li key={r.id}>
+                <button
+                  onClick={() => openRecent(r)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${RATING_DOT[r.rating]}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{r.repoFullName}</span>
+                      <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                        {TOOL_LABEL[r.tool]}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted">{r.headline}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted">{formatWhen(r.createdAt)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Repo picker */}
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium">Repository</label>
