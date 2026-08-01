@@ -183,6 +183,26 @@ export interface PullRequest {
   htmlUrl: string;
 }
 
+/** Create a brand-new file on `branch` (no SHA — fails if the path exists). */
+export async function createFile(
+  fullName: string,
+  path: string,
+  content: string,
+  message: string,
+  branch: string,
+  token: string,
+): Promise<void> {
+  await gh(token, `/repos/${fullName}/contents/${encodeURItPath(path)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      content: Buffer.from(content, "utf8").toString("base64"),
+      branch,
+    }),
+  });
+}
+
 /** Find an open PR whose head is `branch` (owner:branch), if any. */
 export async function findOpenPrByHead(
   fullName: string,

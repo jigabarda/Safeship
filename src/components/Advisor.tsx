@@ -27,6 +27,21 @@ interface Result {
   truncated: boolean;
 }
 
+type ApplyState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | {
+      status: "done";
+      prUrl: string;
+      prNumber: number;
+      summary: string;
+      changeKind: "edit" | "create";
+      path: string;
+      alreadyOpen: boolean;
+    }
+  | { status: "skipped"; note: string }
+  | { status: "error"; error: string };
+
 const RATING_META: Record<Result["rating"], { label: string; cls: string }> = {
   good: {
     label: "Looking good",
@@ -49,6 +64,7 @@ export function Advisor({ repos }: { repos: Repo[] }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  const [apply, setApply] = useState<ApplyState>({ status: "idle" });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,11 +72,44 @@ export function Advisor({ repos }: { repos: Repo[] }) {
     return list.slice(0, 50);
   }, [repos, query]);
 
+  async function runApply() {
+    if (!result || apply.status === "loading") return;
+    setApply({ status: "loading" });
+    try {
+      const res = await fetch("/api/advisor/apply-schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoFullName: result.repoFullName, recommendations: result.markdown }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setApply({ status: "error", error: data.error ?? `Request failed (${res.status})` });
+        return;
+      }
+      if (data.applied) {
+        setApply({
+          status: "done",
+          prUrl: data.prUrl,
+          prNumber: data.prNumber,
+          summary: data.summary ?? "",
+          changeKind: data.changeKind,
+          path: data.path,
+          alreadyOpen: Boolean(data.alreadyOpen),
+        });
+      } else {
+        setApply({ status: "skipped", note: data.note ?? "The AI couldn't apply these automatically." });
+      }
+    } catch {
+      setApply({ status: "error", error: "Could not reach the server." });
+    }
+  }
+
   async function run() {
     if (!repoFullName || running) return;
     setRunning(true);
     setError(null);
     setResult(null);
+    setApply({ status: "idle" });
     try {
       const res = await fetch("/api/advisor", {
         method: "POST",
@@ -207,6 +256,10 @@ export function Advisor({ repos }: { repos: Repo[] }) {
             <Markdown text={result.markdown} />
           </div>
 
+          {result.tool === "schema" && (
+            <ApplySchema state={apply} onApply={runApply} />
+          )}
+
           {result.filesConsidered.length > 0 && (
             <details className="border-t border-line pt-3 text-xs text-muted">
               <summary className="cursor-pointer select-none font-medium">
@@ -226,6 +279,91 @@ export function Advisor({ repos }: { repos: Repo[] }) {
             judgment before acting on it.
           </p>
         </article>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Apply these fixes" — turns the schema review's recommendations into one
+ * reviewable pull request (an edit for Prisma/SQL, a new migration for Rails).
+ * Never touches a database; the file is sent to the AI provider to generate it.
+ */
+function ApplySchema({ state, onApply }: { state: ApplyState; onApply: () => void }) {
+  if (state.status === "done") {
+    return (
+      <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-2/30 p-3">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+            <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {state.alreadyOpen ? "A schema PR is already open" : "Schema PR opened"}
+        </p>
+        <p className="text-xs text-muted">
+          {state.changeKind === "create" ? "Added" : "Edited"}{" "}
+          <span className="font-mono">{state.path}</span>
+          {state.summary ? ` — ${state.summary}` : ""}
+        </p>
+        <a
+          href={state.prUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-fit items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+        >
+          View pull request #{state.prNumber}
+          <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden>
+            <path d="M7 17L17 7M9 7h8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </a>
+      </div>
+    );
+  }
+
+  if (state.status === "skipped") {
+    return (
+      <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/30 p-3">
+        <p className="text-xs text-muted">{state.note}</p>
+        <button
+          onClick={onApply}
+          className="w-fit rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const loading = state.status === "loading";
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/30 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Apply these fixes
+        </span>
+        <button
+          onClick={onApply}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+        >
+          {loading ? (
+            <>
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Opening PR…
+            </>
+          ) : (
+            "Improve schema & open PR"
+          )}
+        </button>
+      </div>
+      <p className="text-xs text-muted">
+        Safeship applies the safe, high-value fixes above the correct way for your stack — editing
+        the schema file (Prisma/SQL) or adding a migration (Rails) — and opens a pull request you
+        review. Nothing is applied to a database.
+      </p>
+      {state.status === "error" && (
+        <p className="rounded bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+          {state.error}
+        </p>
       )}
     </div>
   );
