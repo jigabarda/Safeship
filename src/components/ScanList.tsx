@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { scoreMeta } from "@/lib/ui";
+import { LocalTime } from "@/components/LocalTime";
 
 // Presentational list of scans, shared by the dashboard (recent) and the full
 // Scans page. Server component — no client state, so dates render once on the
@@ -13,16 +14,6 @@ export interface ScanListItem {
   status: string;
 }
 
-function formatWhen(value: Date | string): string {
-  return new Date(value).toLocaleString("en-US", {
-    timeZone: "UTC",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 export function ScanList({ scans }: { scans: ScanListItem[] }) {
   return (
     <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
@@ -34,7 +25,9 @@ export function ScanList({ scans }: { scans: ScanListItem[] }) {
           >
             <div className="min-w-0">
               <p className="truncate font-medium">{s.repoFullName}</p>
-              <p className="mt-0.5 text-xs text-muted">{formatWhen(s.createdAt)} UTC</p>
+              <p className="mt-0.5 text-xs text-muted">
+                <LocalTime iso={new Date(s.createdAt).toISOString()} />
+              </p>
             </div>
             {typeof s.score === "number" ? (
               <span

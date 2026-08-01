@@ -5,6 +5,7 @@ import type { Repo } from "@/lib/github/repos";
 import type { SchemaModel } from "@/lib/schema/parse";
 import { Markdown } from "@/components/Markdown";
 import { SchemaDiagram } from "@/components/SchemaDiagram";
+import { LocalTime } from "@/components/LocalTime";
 
 type Tool = "schema" | "stack" | "optimize";
 /** Exported for the server page that hydrates recent runs. */
@@ -67,15 +68,6 @@ const RATING_DOT: Record<Result["rating"], string> = {
   fair: "bg-amber-500",
   poor: "bg-rose-500",
 };
-
-/** Deterministic (locale + UTC) so SSR and client render the same string. */
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 const RATING_META: Record<Result["rating"], { label: string; cls: string }> = {
   good: {
@@ -226,7 +218,9 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-muted">{r.headline}</span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted">{formatWhen(r.createdAt)}</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    <LocalTime iso={r.createdAt} withTime={false} />
+                  </span>
                 </button>
               </li>
             ))}
