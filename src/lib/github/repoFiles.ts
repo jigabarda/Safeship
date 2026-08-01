@@ -183,6 +183,21 @@ export interface PullRequest {
   htmlUrl: string;
 }
 
+/** Find an open PR whose head is `branch` (owner:branch), if any. */
+export async function findOpenPrByHead(
+  fullName: string,
+  branch: string,
+  token: string,
+): Promise<PullRequest | null> {
+  const owner = fullName.split("/")[0];
+  const prs = await gh<Array<{ number: number; html_url: string }>>(
+    token,
+    `/repos/${fullName}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`,
+  );
+  const pr = prs[0];
+  return pr ? { number: pr.number, htmlUrl: pr.html_url } : null;
+}
+
 /** Open a pull request from `head` into `base`. */
 export async function openPullRequest(
   fullName: string,

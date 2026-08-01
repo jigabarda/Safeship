@@ -378,6 +378,41 @@ function Report({ data }: { data: ScanData }) {
   const [explains, setExplains] = useState<
     Record<string, { plainExplanation: string; suggestedFix: string } | { error: true }>
   >({});
+  const [fixes, setFixes] = useState<Record<string, FixState>>({});
+
+  const runFix = useCallback(async (fid: string) => {
+    setFixes((prev) => ({ ...prev, [fid]: { status: "loading" } }));
+    try {
+      const res = await fetch(`/api/findings/${fid}/fix`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFixes((p) => ({
+          ...p,
+          [fid]: { status: "error", error: data.error ?? `Request failed (${res.status})` },
+        }));
+        return;
+      }
+      if (data.fixed) {
+        setFixes((p) => ({
+          ...p,
+          [fid]: {
+            status: "done",
+            prUrl: data.prUrl,
+            prNumber: data.prNumber,
+            summary: data.summary ?? "",
+            alreadyOpen: Boolean(data.alreadyOpen),
+          },
+        }));
+      } else {
+        setFixes((p) => ({
+          ...p,
+          [fid]: { status: "skipped", note: data.note ?? "The AI couldn't auto-fix this one." },
+        }));
+      }
+    } catch {
+      setFixes((p) => ({ ...p, [fid]: { status: "error", error: "Could not reach the server." } }));
+    }
+  }, []);
 
   const severityCounts = useMemo(() => {
     const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -547,7 +582,12 @@ function Report({ data }: { data: ScanData }) {
                         {/* Mobile: inline detail under the selected row */}
                         {activeId === f.id && (
                           <div className="mt-2 lg:hidden">
-                            <DetailPanel finding={withExplanation(f)} loading={isExplaining(f)} />
+                            <DetailPanel
+                              finding={withExplanation(f)}
+                              loading={isExplaining(f)}
+                              fixState={fixes[f.id]}
+                              onFix={() => runFix(f.id)}
+                            />
                           </div>
                         )}
                       </div>
@@ -559,7 +599,12 @@ function Report({ data }: { data: ScanData }) {
               {/* RIGHT — sticky detail panel (desktop only) */}
               <aside className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
                 {selected ? (
-                  <DetailPanel finding={withExplanation(selected)} loading={isExplaining(selected)} />
+                  <DetailPanel
+                    finding={withExplanation(selected)}
+                    loading={isExplaining(selected)}
+                    fixState={fixes[selected.id]}
+                    onFix={() => runFix(selected.id)}
+                  />
                 ) : (
                   <div className="rounded-xl border border-dashed border-line bg-surface/50 p-8 text-center text-sm text-muted">
                     Select a finding to see the full explanation and fix.
@@ -660,12 +705,22 @@ function FindingRow({
   );
 }
 
+type FixState =
+  | { status: "loading" }
+  | { status: "done"; prUrl: string; prNumber: number; summary: string; alreadyOpen: boolean }
+  | { status: "skipped"; note: string }
+  | { status: "error"; error: string };
+
 function DetailPanel({
   finding,
   loading = false,
+  fixState,
+  onFix,
 }: {
   finding: FindingData;
   loading?: boolean;
+  fixState?: FixState;
+  onFix?: () => void;
 }) {
   const priority = isPriority(finding.priority) ? finding.priority : "minor";
   const pmeta = PRIORITY_META[priority];
@@ -751,8 +806,98 @@ function DetailPanel({
             patched version; check the rule ({finding.ruleId}) for the fixed release.
           </p>
         )}
+
+        {finding.filePath && onFix && (
+          <FixWithAI filePath={finding.filePath} state={fixState} onFix={onFix} />
+        )}
       </div>
     </article>
+  );
+}
+
+/**
+ * "Fix with AI" — asks the backend to read this file, generate a corrected
+ * version, and open a pull request. Whole-file content is sent to the AI
+ * provider to do this, which the copy states plainly.
+ */
+function FixWithAI({
+  filePath,
+  state,
+  onFix,
+}: {
+  filePath: string;
+  state?: FixState;
+  onFix: () => void;
+}) {
+  const loading = state?.status === "loading";
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/30 p-3">
+      {state?.status === "done" ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+              <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {state.alreadyOpen ? "A fix PR is already open" : "Fix PR opened"}
+          </p>
+          {state.summary && <p className="text-xs text-muted">{state.summary}</p>}
+          <a
+            href={state.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+          >
+            View pull request #{state.prNumber}
+            <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden>
+              <path d="M7 17L17 7M9 7h8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </a>
+        </div>
+      ) : state?.status === "skipped" ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted">{state.note}</p>
+          <button
+            onClick={onFix}
+            className="w-fit rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Fix with AI
+            </span>
+            <button
+              onClick={onFix}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Opening PR…
+                </>
+              ) : (
+                "Fix & open PR"
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-muted">
+            Safeship reads <span className="font-mono">{filePath}</span>, generates a fix, and
+            opens a pull request on a new branch for you to review. The file is sent to the AI
+            provider to do this.
+          </p>
+          {state?.status === "error" && (
+            <p className="rounded bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              {state.error}
+            </p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
