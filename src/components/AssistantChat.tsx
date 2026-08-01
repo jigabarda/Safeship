@@ -39,6 +39,7 @@ export function AssistantChat({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -138,49 +139,78 @@ export function AssistantChat({
     sending && messages.length > 0 && messages[messages.length - 1].content === "";
 
   return (
-    <div className="grid min-h-[60vh] flex-1 grid-cols-1 gap-4 lg:grid-cols-[15rem_1fr]">
-      {/* History sidebar */}
-      <aside className="flex flex-col gap-2">
+    <div className="animate-in relative flex min-h-[65vh] flex-1 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+      {/* Dim backdrop behind the drawer on mobile */}
+      {sidebarOpen && (
         <button
-          onClick={newChat}
-          className="flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-surface-2"
-        >
-          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
-            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          New chat
-        </button>
-        {convos.length > 0 && (
-          <ul className="flex max-h-[50vh] flex-col overflow-y-auto rounded-lg border border-line bg-surface lg:max-h-none">
-            {convos.map((c) => (
-              <li key={c.id}>
-                <div
-                  onClick={() => openConversation(c.id)}
-                  className={`group flex cursor-pointer items-center gap-2 border-b border-line/60 px-3 py-2 text-sm transition-colors last:border-0 ${
-                    c.id === activeId ? "bg-surface-2" : "hover:bg-surface-2/50"
-                  }`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                  <button
-                    onClick={(e) => deleteConversation(c.id, e)}
-                    aria-label="Delete conversation"
-                    className="shrink-0 text-muted opacity-0 transition-opacity hover:text-rose-500 group-hover:opacity-100"
+          aria-label="Close history"
+          onClick={() => setSidebarOpen(false)}
+          className="absolute inset-0 z-10 bg-black/20 sm:hidden"
+        />
+      )}
+
+      {/* Collapsible history sidebar (drawer on mobile, inline on desktop) */}
+      <aside
+        className={`absolute inset-y-0 left-0 z-20 h-full overflow-hidden border-r border-line bg-surface transition-transform duration-200 sm:relative sm:z-auto sm:bg-surface-2/30 sm:transition-[width] ${
+          sidebarOpen
+            ? "translate-x-0 sm:w-64"
+            : "-translate-x-full sm:translate-x-0 sm:w-0 sm:border-r-0"
+        }`}
+      >
+        <div className="flex h-full w-64 flex-col gap-2 p-2">
+          <button
+            onClick={newChat}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-surface-2"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            New chat
+          </button>
+          {convos.length > 0 && (
+            <ul className="flex flex-1 flex-col overflow-y-auto">
+              {convos.map((c) => (
+                <li key={c.id}>
+                  <div
+                    onClick={() => openConversation(c.id)}
+                    className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                      c.id === activeId ? "bg-surface-2" : "hover:bg-surface-2/50"
+                    }`}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden>
-                      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+                    <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                    <button
+                      onClick={(e) => deleteConversation(c.id, e)}
+                      aria-label="Delete conversation"
+                      className="shrink-0 text-muted opacity-0 transition-opacity hover:text-rose-500 group-hover:opacity-100"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden>
+                        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </aside>
 
-      {/* Chat */}
-      <div className="flex min-h-[60vh] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-        <div className="flex items-center gap-2 border-b border-line bg-surface-2/60 px-4 py-2.5">
-          <span className="flex gap-1.5" aria-hidden>
+      {/* Chat column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-2 border-b border-line bg-surface-2/60 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((o) => !o)}
+            aria-label={sidebarOpen ? "Hide history" : "Show history"}
+            aria-pressed={sidebarOpen}
+            className="rounded-md p-1 text-muted transition-colors hover:bg-surface hover:text-foreground"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+              <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.7" />
+              <path d="M9 4v16" stroke="currentColor" strokeWidth="1.7" />
+            </svg>
+          </button>
+          <span className="ml-0.5 flex gap-1.5" aria-hidden>
             <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
             <span className="h-2.5 w-2.5 rounded-full bg-amber-400/70" />
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
