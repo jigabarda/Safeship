@@ -194,6 +194,15 @@ export function Advisor({ repos }: { repos: Repo[] }) {
             </div>
           )}
 
+          {result.tool === "schema" && (!result.model || result.model.tables.length === 0) && (
+            <p className="border-t border-line pt-4 text-xs text-muted">
+              Couldn&apos;t auto-draw a diagram for this schema format — the visualizer currently
+              understands Prisma, SQL <span className="font-mono">CREATE TABLE</span>, and Rails{" "}
+              <span className="font-mono">schema.rb</span>. The review below is still based on your
+              schema files.
+            </p>
+          )}
+
           <div className="border-t border-line pt-4">
             <Markdown text={result.markdown} />
           </div>
