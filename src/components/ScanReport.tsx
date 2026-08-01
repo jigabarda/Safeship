@@ -20,6 +20,7 @@ import {
   type ScanStepEvent,
   type ScanStepKey,
 } from "@/lib/scan/steps";
+import { AREA_META, AREA_SORT, classifyArea, type Area } from "@/lib/scan/area";
 
 export interface FindingData {
   id: string;
@@ -363,7 +364,7 @@ function ScoreGauge({ score, colorClass }: { score: number; colorClass: string }
   );
 }
 
-type GroupBy = "priority" | "source";
+type GroupBy = "priority" | "source" | "area";
 
 function Report({ data }: { data: ScanData }) {
   const score = data.score ?? 0;
@@ -513,6 +514,7 @@ function Report({ data }: { data: ScanData }) {
               onChange={setGroupBy}
               options={[
                 { value: "priority", label: "Priority" },
+                { value: "area", label: "Area" },
                 { value: "source", label: "Source" },
               ]}
             />
@@ -530,6 +532,8 @@ function Report({ data }: { data: ScanData }) {
                   <section key={g.key} className="flex flex-col gap-2">
                     {groupBy === "priority" ? (
                       <PriorityHeader priority={g.key as Priority} count={g.findings.length} />
+                    ) : groupBy === "area" ? (
+                      <AreaHeader area={g.key as Area} count={g.findings.length} />
                     ) : (
                       <SourceHeader name={g.key} findings={g.findings} />
                     )}
@@ -583,6 +587,13 @@ function groupFindings(findings: FindingData[], by: GroupBy): Group[] {
     return PRIORITY_SORT.map((p) => ({
       key: p,
       findings: findings.filter((f) => f.priority === p).sort(bySev),
+    })).filter((g) => g.findings.length > 0);
+  }
+
+  if (by === "area") {
+    return AREA_SORT.map((a) => ({
+      key: a,
+      findings: findings.filter((f) => classifyArea(f.filePath) === a).sort(bySev),
     })).filter((g) => g.findings.length > 0);
   }
 
@@ -803,6 +814,21 @@ function PriorityHeader({ priority, count }: { priority: Priority; count: number
     <div className="flex items-center gap-2.5">
       <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
       <h2 className={`text-sm font-semibold ${meta.text}`}>{meta.label}</h2>
+      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium tabular-nums text-muted">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function AreaHeader({ area, count }: { area: Area; count: number }) {
+  const meta = AREA_META[area];
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-0.5 text-sm font-semibold">
+        {meta.label}
+      </span>
+      <span className="text-xs text-muted">{meta.detail}</span>
       <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium tabular-nums text-muted">
         {count}
       </span>
