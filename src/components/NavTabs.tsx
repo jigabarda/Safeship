@@ -10,6 +10,8 @@ const TABS: Array<{ href: string; label: string; match: string[] }> = [
   { href: "/dashboard", label: "Repositories", match: ["/dashboard"] },
   // A single report lives at /scan/[id], so it highlights the Scans tab too.
   { href: "/scans", label: "Scans", match: ["/scans", "/scan/"] },
+  { href: "/advisor", label: "Advisor", match: ["/advisor"] },
+  { href: "/assistant", label: "Assistant", match: ["/assistant"] },
 ];
 
 export function NavTabs() {
