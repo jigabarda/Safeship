@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Safeship — is your code safe to ship?",
+  title: "Safeship",
   description:
     "A friendly security check for AI-assisted developers. Safeship reads your code, finds leaked secrets and known vulnerabilities, and explains them in plain English. It only reads code — it never attacks anything.",
 };
