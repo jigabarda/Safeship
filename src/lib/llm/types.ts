@@ -40,6 +40,11 @@ export interface LlmClient {
    * Returns the model's raw text (JSON string when opts.json is set).
    */
   complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<string>;
+  /**
+   * Stream a chat completion token-by-token. Optional — callers fall back to
+   * complete() when a provider doesn't implement it.
+   */
+  stream?(messages: ChatMessage[], opts?: CompleteOptions): AsyncIterable<string>;
 }
 
 /** Thrown when a provider signals it's rate-limited (HTTP 429). */

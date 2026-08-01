@@ -1,4 +1,5 @@
 import { buildUserPrompt, parseExplain, SYSTEM_PROMPT } from "./prompt";
+import { readLines } from "./stream";
 import {
   LlmRateLimitError,
   type ChatMessage,
@@ -86,5 +87,45 @@ export class GroqClient implements LlmClient {
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error("Groq returned an empty response");
     return content;
+  }
+
+  async *stream(messages: ChatMessage[], opts: CompleteOptions = {}): AsyncIterable<string> {
+    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.model,
+        temperature: opts.temperature ?? 0.3,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        stream: true,
+        messages,
+      }),
+    });
+
+    if (res.status === 429) throw new LlmRateLimitError();
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Groq HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    // Server-Sent Events: lines like `data: {json}`, terminated by `data: [DONE]`.
+    for await (const line of readLines(res.body)) {
+      const t = line.trim();
+      if (!t.startsWith("data:")) continue;
+      const payload = t.slice(5).trim();
+      if (payload === "[DONE]") return;
+      try {
+        const json = JSON.parse(payload) as {
+          choices?: Array<{ delta?: { content?: string } }>;
+        };
+        const chunk = json.choices?.[0]?.delta?.content;
+        if (chunk) yield chunk;
+      } catch {
+        /* ignore keep-alive / partial lines */
+      }
+    }
   }
 }
