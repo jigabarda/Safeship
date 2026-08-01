@@ -151,7 +151,7 @@ export function AssistantChat({
 
       {/* Collapsible history sidebar (drawer on mobile, inline on desktop) */}
       <aside
-        className={`absolute inset-y-0 left-0 z-20 h-full overflow-hidden border-r border-line bg-surface transition-transform duration-200 sm:relative sm:z-auto sm:bg-surface-2/30 sm:transition-[width] ${
+        className={`absolute inset-y-0 left-0 z-20 overflow-hidden border-r border-line bg-surface transition-transform duration-200 sm:relative sm:z-auto sm:bg-surface-2/30 sm:transition-[width] ${
           sidebarOpen
             ? "translate-x-0 sm:w-64"
             : "-translate-x-full sm:translate-x-0 sm:w-0 sm:border-r-0"
