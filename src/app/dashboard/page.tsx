@@ -3,47 +3,8 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { AppHeader } from "@/components/AppHeader";
 import { SignInButton } from "@/components/AuthButtons";
-import { RepoList, type Repo } from "@/components/RepoList";
-
-interface GithubRepo {
-  id: number;
-  full_name: string;
-  private: boolean;
-  clone_url: string;
-  updated_at: string | null;
-  language: string | null;
-}
-
-async function fetchRepos(token: string): Promise<{ repos: Repo[]; error: string | null }> {
-  try {
-    const res = await fetch(
-      "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        cache: "no-store",
-      },
-    );
-    if (!res.ok) return { repos: [], error: `GitHub returned ${res.status}. Try signing out and back in.` };
-    const raw = (await res.json()) as GithubRepo[];
-    return {
-      repos: raw.map((r) => ({
-        id: r.id,
-        fullName: r.full_name,
-        private: r.private,
-        url: r.clone_url,
-        updatedAt: r.updated_at,
-        language: r.language,
-      })),
-      error: null,
-    };
-  } catch {
-    return { repos: [], error: "Could not reach GitHub. Check your connection." };
-  }
-}
+import { RepoList } from "@/components/RepoList";
+import { fetchRepos } from "@/lib/github/repos";
 
 export default async function DashboardPage() {
   const session = await auth();

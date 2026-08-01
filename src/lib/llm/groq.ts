@@ -1,5 +1,12 @@
 import { buildUserPrompt, parseExplain, SYSTEM_PROMPT } from "./prompt";
-import type { ExplainInput, ExplainOutput, LlmClient } from "./types";
+import {
+  LlmRateLimitError,
+  type ChatMessage,
+  type CompleteOptions,
+  type ExplainInput,
+  type ExplainOutput,
+  type LlmClient,
+} from "./types";
 
 /**
  * Groq free API — OpenAI-compatible, fast, no credit card. Good default when
@@ -49,5 +56,35 @@ export class GroqClient implements LlmClient {
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error("Groq returned an empty response");
     return parseExplain(content, input);
+  }
+
+  async complete(messages: ChatMessage[], opts: CompleteOptions = {}): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.model,
+        temperature: opts.temperature ?? 0.3,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+        messages,
+      }),
+    });
+
+    if (res.status === 429) throw new LlmRateLimitError();
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Groq HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Groq returned an empty response");
+    return content;
   }
 }

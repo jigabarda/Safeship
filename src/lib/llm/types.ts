@@ -17,7 +17,35 @@ export interface ExplainOutput {
   priority: Priority;
 }
 
+export type ChatRole = "system" | "user" | "assistant";
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+export interface CompleteOptions {
+  temperature?: number;
+  /** Ask the provider for a strict JSON object response. */
+  json?: boolean;
+  /** Cap the response length (tokens). */
+  maxTokens?: number;
+}
+
 export interface LlmClient {
   readonly name: string;
   explainFinding(input: ExplainInput): Promise<ExplainOutput>;
+  /**
+   * Generic chat completion — used by the assistant, advisor, and fix features.
+   * Returns the model's raw text (JSON string when opts.json is set).
+   */
+  complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<string>;
+}
+
+/** Thrown when a provider signals it's rate-limited (HTTP 429). */
+export class LlmRateLimitError extends Error {
+  constructor(message = "The AI provider is rate-limited right now.") {
+    super(message);
+    this.name = "LlmRateLimitError";
+  }
 }
