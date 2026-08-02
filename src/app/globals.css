@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Drive Tailwind's `dark:` utilities from the data-theme attribute (set by an
+   inline script that resolves the OS preference or the user's saved choice),
+   so a manual toggle and the tokens below always stay in sync. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ---------------------------------------------------------------------------
    Design tokens — one small, restrained palette. Neutral zinc surfaces with a
    single emerald accent. Every color is a CSS variable so light/dark stay in
@@ -18,18 +23,16 @@
   --radius: 0.875rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #09090b;
-    --foreground: #ececee;
-    --surface: #141416;
-    --surface-2: #1b1b1f;
-    --line: #262629;
-    --line-strong: #34343a;
-    --muted: #9b9ba3;
-    --brand: #34d399;
-    --brand-soft: #052e21;
-  }
+:root[data-theme="dark"] {
+  --background: #09090b;
+  --foreground: #ececee;
+  --surface: #141416;
+  --surface-2: #1b1b1f;
+  --line: #262629;
+  --line-strong: #34343a;
+  --muted: #9b9ba3;
+  --brand: #34d399;
+  --brand-soft: #052e21;
 }
 
 @theme inline {
