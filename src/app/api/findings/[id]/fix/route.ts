@@ -9,7 +9,7 @@ import {
   openPullRequest,
   putFile,
 } from "@/lib/github/repoFiles";
-import { getLlmClient } from "@/lib/llm/index";
+import { getUserLlmClient } from "@/lib/llm/userClient";
 import { LlmRateLimitError } from "@/lib/llm/types";
 import { generateFix, isFixablePath, MAX_FIX_FILE_BYTES } from "@/lib/fix/generate";
 
@@ -59,7 +59,7 @@ export async function POST(
   const token = user.accessToken;
   const repo = finding.scan.repoFullName;
 
-  const llm = getLlmClient();
+  const llm = await getUserLlmClient(session.user.id);
   if (!llm) {
     return Response.json({ error: "The AI isn't configured to generate fixes right now." }, { status: 503 });
   }

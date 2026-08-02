@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { GitHubApiError } from "@/lib/github/repoFiles";
-import { getLlmClient } from "@/lib/llm/index";
+import { getUserLlmClient } from "@/lib/llm/userClient";
 import { LlmRateLimitError } from "@/lib/llm/types";
 import {
   ADVISOR_META,
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "No GitHub token on file — please sign in again." }, { status: 401 });
   }
 
-  const llm = getLlmClient();
+  const llm = await getUserLlmClient(session.user.id);
   if (!llm) {
     return Response.json({ error: "The AI advisor isn't configured right now." }, { status: 503 });
   }

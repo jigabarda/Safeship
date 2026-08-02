@@ -20,6 +20,12 @@ model User {
   email         String?
   accessToken   String // GitHub OAuth token — kept server-side only, never logged
   createdAt     DateTime       @default(now())
+  // "Bring your own model" — optional per-user OpenAI-compatible LLM config.
+  // The API key is stored encrypted (AES-256-GCM); never in plaintext or logs.
+  llmProvider   String?
+  llmBaseUrl    String?
+  llmModel      String?
+  llmApiKeyEnc  String?
   scans         Scan[]
   advisorRuns   AdvisorRun[]
   conversations Conversation[]

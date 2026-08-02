@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { getLlmClient } from "@/lib/llm/index";
+import { getUserLlmClient } from "@/lib/llm/userClient";
 import { LlmRateLimitError, type ChatMessage } from "@/lib/llm/types";
 
 // Streaming chat endpoint for the in-app assistant. Persists each turn to a
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Send a message to continue." }, { status: 400 });
   }
 
-  const llm = getLlmClient();
+  const llm = await getUserLlmClient(userId);
   if (!llm) {
     return Response.json({ error: "The AI assistant isn't configured right now." }, { status: 503 });
   }

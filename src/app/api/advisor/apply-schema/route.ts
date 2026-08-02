@@ -10,7 +10,7 @@ import {
   openPullRequest,
   putFile,
 } from "@/lib/github/repoFiles";
-import { getLlmClient } from "@/lib/llm/index";
+import { getUserLlmClient } from "@/lib/llm/userClient";
 import { LlmRateLimitError } from "@/lib/llm/types";
 import { collectSchemaFiles } from "@/lib/advisor/analyze";
 import { parseSchema } from "@/lib/schema/parse";
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   }
   const token = user.accessToken;
 
-  const llm = getLlmClient();
+  const llm = await getUserLlmClient(session.user.id);
   if (!llm) {
     return Response.json({ error: "The AI isn't configured to apply changes right now." }, { status: 503 });
   }

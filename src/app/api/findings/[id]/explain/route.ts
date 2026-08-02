@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 import type { Severity } from "@/lib/engines/types";
 import { db } from "@/lib/db";
-import { explainFindingSafe, getLlmClient } from "@/lib/llm/index";
+import { explainFindingSafe } from "@/lib/llm/index";
+import { getUserLlmClient } from "@/lib/llm/userClient";
 
 // Lazily generate a plain-English explanation + suggested fix for a single
 // finding, the first time a user opens it. The result is cached on the Finding
@@ -32,7 +33,7 @@ export async function POST(
     });
   }
 
-  const llm = getLlmClient();
+  const llm = await getUserLlmClient(session.user.id);
   const { output } = await explainFindingSafe(
     {
       engine: finding.engine,
