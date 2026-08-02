@@ -2,25 +2,29 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { AppHeader } from "@/components/AppHeader";
-import { LlmSettingsForm, type LlmConfig } from "@/components/LlmSettingsForm";
+import { LlmSettingsForm, type Assignments } from "@/components/LlmSettingsForm";
 
 export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/dashboard");
 
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  const [user, models] = await Promise.all([
+    db.user.findUnique({ where: { id: session.user.id } }),
+    db.llmModel.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, label: true, provider: true, baseUrl: true, model: true },
+    }),
+  ]);
   const username = user?.username ?? session.user.username ?? session.user.name ?? null;
   const avatarUrl = username ? `https://github.com/${username}.png?size=96` : null;
 
-  const llmConfig: LlmConfig | null =
-    user?.llmBaseUrl && user.llmModel
-      ? {
-          provider: user.llmProvider ?? "custom",
-          baseUrl: user.llmBaseUrl,
-          model: user.llmModel,
-          hasKey: Boolean(user.llmApiKeyEnc),
-        }
-      : null;
+  const assignments: Assignments = {
+    explain: user?.explainModelId ?? null,
+    advisor: user?.advisorModelId ?? null,
+    assistant: user?.assistantModelId ?? null,
+    fix: user?.fixModelId ?? null,
+  };
 
   return (
     <>
@@ -60,11 +64,12 @@ export default async function SettingsPage() {
           <section className="rounded-xl border border-line bg-surface p-5 shadow-sm">
             <h2 className="text-sm font-semibold">AI model</h2>
             <p className="mt-1 mb-4 text-sm text-muted">
-              By default Safeship uses its built-in model. Bring your own OpenAI-compatible model
-              (OpenAI, Groq, OpenRouter, or any compatible endpoint) to use it for scans, the
-              advisor, and the assistant.
+              By default every feature uses Safeship&apos;s built-in model. Add your own
+              OpenAI-compatible models (OpenAI, Groq, OpenRouter, or any compatible endpoint), then
+              choose which model each feature uses — the same one everywhere, or a different model
+              per task to manage cost and rate limits.
             </p>
-            <LlmSettingsForm initial={llmConfig} />
+            <LlmSettingsForm initialModels={models} initialAssignments={assignments} />
           </section>
         </div>
       </main>

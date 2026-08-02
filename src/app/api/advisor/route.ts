@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "No GitHub token on file — please sign in again." }, { status: 401 });
   }
 
-  const llm = await getUserLlmClient(session.user.id);
+  const llm = await getUserLlmClient(session.user.id, "advisor");
   if (!llm) {
     return Response.json({ error: "The AI advisor isn't configured right now." }, { status: 503 });
   }

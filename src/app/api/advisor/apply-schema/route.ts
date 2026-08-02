@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   }
   const token = user.accessToken;
 
-  const llm = await getUserLlmClient(session.user.id);
+  const llm = await getUserLlmClient(session.user.id, "fix");
   if (!llm) {
     return Response.json({ error: "The AI isn't configured to apply changes right now." }, { status: 503 });
   }

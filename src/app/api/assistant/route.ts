@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Send a message to continue." }, { status: 400 });
   }
 
-  const llm = await getUserLlmClient(userId);
+  const llm = await getUserLlmClient(userId, "assistant");
   if (!llm) {
     return Response.json({ error: "The AI assistant isn't configured right now." }, { status: 503 });
   }

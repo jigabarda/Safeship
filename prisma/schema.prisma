@@ -20,15 +20,33 @@ model User {
   email         String?
   accessToken   String // GitHub OAuth token — kept server-side only, never logged
   createdAt     DateTime       @default(now())
-  // "Bring your own model" — optional per-user OpenAI-compatible LLM config.
-  // The API key is stored encrypted (AES-256-GCM); never in plaintext or logs.
-  llmProvider   String?
-  llmBaseUrl    String?
-  llmModel      String?
-  llmApiKeyEnc  String?
+  // "Bring your own model" — a library of the user's OpenAI-compatible models
+  // (keys stored encrypted), plus which model each AI feature uses. A null
+  // assignment means Safeship's built-in default.
+  llmModels        LlmModel[]
+  explainModelId   String?
+  advisorModelId   String?
+  assistantModelId String?
+  fixModelId       String?
   scans         Scan[]
   advisorRuns   AdvisorRun[]
   conversations Conversation[]
+}
+
+// One saved OpenAI-compatible model connection. The API key is encrypted
+// (AES-256-GCM) and never returned to the client.
+model LlmModel {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  provider  String
+  baseUrl   String
+  model     String
+  apiKeyEnc String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Scan {

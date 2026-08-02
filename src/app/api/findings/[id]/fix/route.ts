@@ -59,7 +59,7 @@ export async function POST(
   const token = user.accessToken;
   const repo = finding.scan.repoFullName;
 
-  const llm = await getUserLlmClient(session.user.id);
+  const llm = await getUserLlmClient(session.user.id, "fix");
   if (!llm) {
     return Response.json({ error: "The AI isn't configured to generate fixes right now." }, { status: 503 });
   }

@@ -33,7 +33,7 @@ export async function POST(
     });
   }
 
-  const llm = await getUserLlmClient(session.user.id);
+  const llm = await getUserLlmClient(session.user.id, "explain");
   const { output } = await explainFindingSafe(
     {
       engine: finding.engine,
