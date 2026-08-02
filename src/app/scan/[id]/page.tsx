@@ -58,7 +58,10 @@ export default async function ScanPage({
 
   return (
     <>
-      <AppHeader username={session.user.username ?? session.user.name} />
+      <AppHeader
+        username={session.user.username ?? session.user.name}
+        containerClass="max-w-5xl"
+      />
       <ScanReport scanId={id} initial={initial} />
     </>
   );

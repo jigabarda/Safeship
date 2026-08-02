@@ -93,10 +93,10 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
 
   return (
     <>
-      <main className="animate-in mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
+      <main className="animate-in mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
         <div>
           <p className="text-sm text-muted">Security report</p>
-          <h1 className="mt-1 break-all font-sans text-2xl font-semibold tracking-tight">
+          <h1 className="mt-1 break-all text-2xl font-semibold tracking-tight">
             {data.repoFullName}
           </h1>
         </div>
@@ -672,17 +672,15 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
                     )}
                     {g.findings.map((f) => (
                       <div key={f.id}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                           {f.filePath ? (
-                            <input
-                              type="checkbox"
+                            <FixCheckbox
                               checked={selectedForFix.has(f.id)}
-                              onChange={() => toggleForFix(f.id)}
-                              aria-label={`Select "${f.title}" for batch fix`}
-                              className="h-4 w-4 shrink-0 cursor-pointer accent-brand"
+                              onToggle={() => toggleForFix(f.id)}
+                              label={`Select "${f.title}" for batch fix`}
                             />
                           ) : (
-                            <span className="w-4 shrink-0" aria-hidden />
+                            <span className="w-[18px] shrink-0" aria-hidden />
                           )}
                           <div className="min-w-0 flex-1">
                             <FindingRow
@@ -769,6 +767,45 @@ function groupFindings(findings: FindingData[], by: GroupBy): Group[] {
       const wb = Math.min(...b.findings.map((f) => SEV_RANK[f.severity] ?? 9));
       return wa - wb || b.findings.length - a.findings.length;
     });
+}
+
+/** Clean, neutral checkbox (no loud accent). Filled with the foreground color
+ *  when checked, subtle border when not. */
+function FixCheckbox({
+  checked,
+  onToggle,
+  label,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onToggle}
+      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors ${
+        checked
+          ? "border-foreground bg-foreground text-background"
+          : "border-line-strong bg-surface hover:border-foreground/50"
+      }`}
+    >
+      {checked && (
+        <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" aria-hidden>
+          <path
+            d="M5 12.5l4 4 10-10.5"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
 }
 
 function FindingRow({
@@ -1074,14 +1111,14 @@ function BatchFixBar({
   const loading = state.status === "loading";
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand/40 bg-brand/5 px-4 py-3">
+    <div className="sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface/95 px-4 py-3 shadow-sm backdrop-blur">
       <span className="text-sm font-medium">
         {loading ? "Fixing selected findings…" : `${count} selected`}
       </span>
       {!loading && (
         <button
           onClick={onSelectAll}
-          className="text-xs font-medium text-brand underline underline-offset-2 hover:opacity-80"
+          className="text-xs font-medium text-muted underline underline-offset-2 hover:text-foreground"
         >
           {allSelected ? "Deselect all" : "Select all fixable"}
         </button>
@@ -1091,11 +1128,11 @@ function BatchFixBar({
         <button
           onClick={onRun}
           disabled={loading || count === 0}
-          className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? (
             <>
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background border-t-transparent" />
               Opening PR…
             </>
           ) : (

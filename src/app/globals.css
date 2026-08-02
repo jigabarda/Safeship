@@ -44,25 +44,44 @@
   --color-brand-soft: var(--brand-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-instrument-serif);
   --radius-xl: var(--radius);
+}
+
+/* Always reserve room for the scrollbar so content doesn't shift sideways when
+   navigating between short pages (no scrollbar) and long ones. */
+html {
+  scrollbar-gutter: stable;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Display headings use the serif. Its natural weight is 400, so we don't bold it
-   (a component that wants clean Geist instead can opt out with `font-sans`). */
-h1 {
-  font-family: var(--font-display), Georgia, "Times New Roman", serif;
-  font-weight: 400;
-  letter-spacing: -0.015em;
-  line-height: 1.1;
+/* Typographic polish — crisper headings, calmer body rhythm. */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.021em;
+  line-height: 1.2;
+}
+
+/* One consistent, gentle motion curve for every interactive element, so hovers
+   and focus states feel smooth without each component re-declaring it. */
+a,
+button,
+input,
+textarea,
+select,
+[role="button"] {
+  transition-property: color, background-color, border-color, box-shadow, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Thin, unobtrusive scrollbars inside scrollable panels. */
@@ -71,8 +90,8 @@ h1 {
   scrollbar-color: var(--line-strong) transparent;
 }
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 *::-webkit-scrollbar-thumb {
   background: var(--line-strong);
