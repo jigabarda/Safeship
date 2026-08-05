@@ -20,6 +20,7 @@ import {
   type ScanStepEvent,
   type ScanStepKey,
 } from "@/lib/scan/steps";
+import { AREA_META, AREA_SORT, classifyArea, type Area } from "@/lib/scan/area";
 
 export interface FindingData {
   id: string;
@@ -92,7 +93,7 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
 
   return (
     <>
-      <main className="animate-in mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
+      <main className="animate-in mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
         <div>
           <p className="text-sm text-muted">Security report</p>
           <h1 className="mt-1 break-all text-2xl font-semibold tracking-tight">
@@ -110,7 +111,7 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
         )}
         {data.status === "cancelled" && <CancelledBanner />}
         {data.status === "failed" && <FailedBanner error={data.error} />}
-        {data.status === "done" && <Report data={data} />}
+        {data.status === "done" && <Report data={data} scanId={scanId} />}
       </main>
     </>
   );
@@ -363,9 +364,9 @@ function ScoreGauge({ score, colorClass }: { score: number; colorClass: string }
   );
 }
 
-type GroupBy = "priority" | "source";
+type GroupBy = "priority" | "source" | "area";
 
-function Report({ data }: { data: ScanData }) {
+function Report({ data, scanId }: { data: ScanData; scanId: string }) {
   const score = data.score ?? 0;
   const meta = scoreMeta(score);
   const total = data.findings.length;
@@ -377,6 +378,113 @@ function Report({ data }: { data: ScanData }) {
   const [explains, setExplains] = useState<
     Record<string, { plainExplanation: string; suggestedFix: string } | { error: true }>
   >({});
+  const [fixes, setFixes] = useState<Record<string, FixState>>({});
+
+  const runFix = useCallback(async (fid: string) => {
+    setFixes((prev) => ({ ...prev, [fid]: { status: "loading" } }));
+    try {
+      const res = await fetch(`/api/findings/${fid}/fix`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFixes((p) => ({
+          ...p,
+          [fid]: { status: "error", error: data.error ?? `Request failed (${res.status})` },
+        }));
+        return;
+      }
+      if (data.fixed) {
+        setFixes((p) => ({
+          ...p,
+          [fid]: {
+            status: "done",
+            prUrl: data.prUrl,
+            prNumber: data.prNumber,
+            summary: data.summary ?? "",
+            alreadyOpen: Boolean(data.alreadyOpen),
+          },
+        }));
+      } else {
+        setFixes((p) => ({
+          ...p,
+          [fid]: { status: "skipped", note: data.note ?? "The AI couldn't auto-fix this one." },
+        }));
+      }
+    } catch {
+      setFixes((p) => ({ ...p, [fid]: { status: "error", error: "Could not reach the server." } }));
+    }
+  }, []);
+
+  // Multi-select → one PR that fixes everything selected.
+  const [selectedForFix, setSelectedForFix] = useState<Set<string>>(new Set());
+  const [batch, setBatch] = useState<BatchState>({ status: "idle" });
+
+  const toggleForFix = useCallback((fid: string) => {
+    setBatch({ status: "idle" });
+    setSelectedForFix((prev) => {
+      const next = new Set(prev);
+      if (next.has(fid)) next.delete(fid);
+      else next.add(fid);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedForFix(new Set());
+    setBatch({ status: "idle" });
+  }, []);
+
+  const runBatchFix = useCallback(async () => {
+    const ids = [...selectedForFix];
+    if (ids.length === 0) return;
+    setBatch({ status: "loading" });
+    try {
+      const res = await fetch(`/api/scan/${scanId}/fix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ findingIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBatch({ status: "error", error: data.error ?? `Request failed (${res.status})` });
+        return;
+      }
+      const rows: Array<{ findingId: string; status: string; note?: string }> = data.results ?? [];
+      // Reflect the outcome on each finding's own fix panel too.
+      setFixes((prev) => {
+        const next = { ...prev };
+        for (const r of rows) {
+          if (r.status === "fixed" && data.fixed) {
+            next[r.findingId] = {
+              status: "done",
+              prUrl: data.prUrl,
+              prNumber: data.prNumber,
+              summary: "",
+              alreadyOpen: false,
+            };
+          } else if (r.status === "skipped") {
+            next[r.findingId] = { status: "skipped", note: r.note ?? "Couldn't auto-fix this one." };
+          }
+        }
+        return next;
+      });
+      if (data.fixed) {
+        const skipped = rows.filter((r) => r.status === "skipped").length;
+        setBatch({
+          status: "done",
+          prUrl: data.prUrl,
+          prNumber: data.prNumber,
+          fixedCount: data.fixedCount ?? 0,
+          fileCount: data.fileCount ?? 0,
+          skipped,
+        });
+        setSelectedForFix(new Set());
+      } else {
+        setBatch({ status: "error", error: data.note ?? "None of the selected findings could be auto-fixed." });
+      }
+    } catch {
+      setBatch({ status: "error", error: "Could not reach the server." });
+    }
+  }, [selectedForFix, scanId]);
 
   const severityCounts = useMemo(() => {
     const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -401,6 +509,21 @@ function Report({ data }: { data: ScanData }) {
 
   const groups = useMemo(() => groupFindings(filtered, groupBy), [filtered, groupBy]);
   const ordered = useMemo(() => groups.flatMap((g) => g.findings), [groups]);
+
+  // Findings we can auto-fix (tied to a file). Drives the batch selection.
+  const fixableIds = useMemo(() => ordered.filter((f) => f.filePath).map((f) => f.id), [ordered]);
+  const allFixableSelected =
+    fixableIds.length > 0 && fixableIds.every((id) => selectedForFix.has(id));
+
+  const toggleAllFixable = () => {
+    setBatch({ status: "idle" });
+    setSelectedForFix((prev) => {
+      const next = new Set(prev);
+      if (fixableIds.every((id) => prev.has(id))) fixableIds.forEach((id) => next.delete(id));
+      else fixableIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
 
   // Derive the active finding during render (no effect): honor the user's
   // explicit pick when it's still visible, otherwise default to the top one.
@@ -513,10 +636,22 @@ function Report({ data }: { data: ScanData }) {
               onChange={setGroupBy}
               options={[
                 { value: "priority", label: "Priority" },
+                { value: "area", label: "Area" },
                 { value: "source", label: "Source" },
               ]}
             />
           </div>
+
+          {(selectedForFix.size > 0 || batch.status !== "idle") && (
+            <BatchFixBar
+              count={selectedForFix.size}
+              allSelected={allFixableSelected}
+              state={batch}
+              onRun={runBatchFix}
+              onClear={clearSelection}
+              onSelectAll={toggleAllFixable}
+            />
+          )}
 
           {ordered.length === 0 ? (
             <p className="rounded-xl border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
@@ -530,20 +665,40 @@ function Report({ data }: { data: ScanData }) {
                   <section key={g.key} className="flex flex-col gap-2">
                     {groupBy === "priority" ? (
                       <PriorityHeader priority={g.key as Priority} count={g.findings.length} />
+                    ) : groupBy === "area" ? (
+                      <AreaHeader area={g.key as Area} count={g.findings.length} />
                     ) : (
                       <SourceHeader name={g.key} findings={g.findings} />
                     )}
                     {g.findings.map((f) => (
                       <div key={f.id}>
-                        <FindingRow
-                          finding={f}
-                          selected={activeId === f.id}
-                          onSelect={() => setSelectedId(f.id)}
-                        />
+                        <div className="flex items-center gap-2.5">
+                          {f.filePath ? (
+                            <FixCheckbox
+                              checked={selectedForFix.has(f.id)}
+                              onToggle={() => toggleForFix(f.id)}
+                              label={`Select "${f.title}" for batch fix`}
+                            />
+                          ) : (
+                            <span className="w-[18px] shrink-0" aria-hidden />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <FindingRow
+                              finding={f}
+                              selected={activeId === f.id}
+                              onSelect={() => setSelectedId(f.id)}
+                            />
+                          </div>
+                        </div>
                         {/* Mobile: inline detail under the selected row */}
                         {activeId === f.id && (
                           <div className="mt-2 lg:hidden">
-                            <DetailPanel finding={withExplanation(f)} loading={isExplaining(f)} />
+                            <DetailPanel
+                              finding={withExplanation(f)}
+                              loading={isExplaining(f)}
+                              fixState={fixes[f.id]}
+                              onFix={() => runFix(f.id)}
+                            />
                           </div>
                         )}
                       </div>
@@ -555,7 +710,12 @@ function Report({ data }: { data: ScanData }) {
               {/* RIGHT — sticky detail panel (desktop only) */}
               <aside className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
                 {selected ? (
-                  <DetailPanel finding={withExplanation(selected)} loading={isExplaining(selected)} />
+                  <DetailPanel
+                    finding={withExplanation(selected)}
+                    loading={isExplaining(selected)}
+                    fixState={fixes[selected.id]}
+                    onFix={() => runFix(selected.id)}
+                  />
                 ) : (
                   <div className="rounded-xl border border-dashed border-line bg-surface/50 p-8 text-center text-sm text-muted">
                     Select a finding to see the full explanation and fix.
@@ -586,6 +746,13 @@ function groupFindings(findings: FindingData[], by: GroupBy): Group[] {
     })).filter((g) => g.findings.length > 0);
   }
 
+  if (by === "area") {
+    return AREA_SORT.map((a) => ({
+      key: a,
+      findings: findings.filter((f) => classifyArea(f.filePath) === a).sort(bySev),
+    })).filter((g) => g.findings.length > 0);
+  }
+
   const map = new Map<string, FindingData[]>();
   for (const f of findings) {
     const key = sourceOf(f);
@@ -600,6 +767,45 @@ function groupFindings(findings: FindingData[], by: GroupBy): Group[] {
       const wb = Math.min(...b.findings.map((f) => SEV_RANK[f.severity] ?? 9));
       return wa - wb || b.findings.length - a.findings.length;
     });
+}
+
+/** Clean, neutral checkbox (no loud accent). Filled with the foreground color
+ *  when checked, subtle border when not. */
+function FixCheckbox({
+  checked,
+  onToggle,
+  label,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onToggle}
+      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors ${
+        checked
+          ? "border-foreground bg-foreground text-background"
+          : "border-line-strong bg-surface hover:border-foreground/50"
+      }`}
+    >
+      {checked && (
+        <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" aria-hidden>
+          <path
+            d="M5 12.5l4 4 10-10.5"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
 }
 
 function FindingRow({
@@ -649,12 +855,22 @@ function FindingRow({
   );
 }
 
+type FixState =
+  | { status: "loading" }
+  | { status: "done"; prUrl: string; prNumber: number; summary: string; alreadyOpen: boolean }
+  | { status: "skipped"; note: string }
+  | { status: "error"; error: string };
+
 function DetailPanel({
   finding,
   loading = false,
+  fixState,
+  onFix,
 }: {
   finding: FindingData;
   loading?: boolean;
+  fixState?: FixState;
+  onFix?: () => void;
 }) {
   const priority = isPriority(finding.priority) ? finding.priority : "minor";
   const pmeta = PRIORITY_META[priority];
@@ -740,8 +956,208 @@ function DetailPanel({
             patched version; check the rule ({finding.ruleId}) for the fixed release.
           </p>
         )}
+
+        {finding.filePath && onFix && (
+          <FixWithAI filePath={finding.filePath} state={fixState} onFix={onFix} />
+        )}
       </div>
     </article>
+  );
+}
+
+/**
+ * "Fix with AI" — asks the backend to read this file, generate a corrected
+ * version, and open a pull request. Whole-file content is sent to the AI
+ * provider to do this, which the copy states plainly.
+ */
+function FixWithAI({
+  filePath,
+  state,
+  onFix,
+}: {
+  filePath: string;
+  state?: FixState;
+  onFix: () => void;
+}) {
+  const loading = state?.status === "loading";
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/30 p-3">
+      {state?.status === "done" ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+              <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {state.alreadyOpen ? "A fix PR is already open" : "Fix PR opened"}
+          </p>
+          {state.summary && <p className="text-xs text-muted">{state.summary}</p>}
+          <a
+            href={state.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+          >
+            View pull request #{state.prNumber}
+            <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden>
+              <path d="M7 17L17 7M9 7h8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </a>
+        </div>
+      ) : state?.status === "skipped" ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted">{state.note}</p>
+          <button
+            onClick={onFix}
+            className="w-fit rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Fix with AI
+            </span>
+            <button
+              onClick={onFix}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Opening PR…
+                </>
+              ) : (
+                "Fix & open PR"
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-muted">
+            Safeship reads <span className="font-mono">{filePath}</span>, generates a fix, and
+            opens a pull request on a new branch for you to review. The file is sent to the AI
+            provider to do this.
+          </p>
+          {state?.status === "error" && (
+            <p className="rounded bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              {state.error}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+type BatchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; prUrl: string; prNumber: number; fixedCount: number; fileCount: number; skipped: number }
+  | { status: "error"; error: string };
+
+/** The toolbar that appears once you tick findings for a batch fix. */
+function BatchFixBar({
+  count,
+  allSelected,
+  state,
+  onRun,
+  onClear,
+  onSelectAll,
+}: {
+  count: number;
+  allSelected: boolean;
+  state: BatchState;
+  onRun: () => void;
+  onClear: () => void;
+  onSelectAll: () => void;
+}) {
+  if (state.status === "done") {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-300/70 bg-emerald-50 px-4 py-3 dark:border-emerald-800/60 dark:bg-emerald-950/25">
+        <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>
+          <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+          Opened a pull request with {state.fixedCount} fix{state.fixedCount === 1 ? "" : "es"} across{" "}
+          {state.fileCount} file{state.fileCount === 1 ? "" : "s"}
+          {state.skipped > 0 && (
+            <span className="font-normal text-emerald-700/80 dark:text-emerald-300/70">
+              {" "}· {state.skipped} couldn&apos;t be auto-fixed
+            </span>
+          )}
+        </p>
+        <div className="ml-auto flex items-center gap-2">
+          <a
+            href={state.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+          >
+            View pull request #{state.prNumber}
+            <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden>
+              <path d="M7 17L17 7M9 7h8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </a>
+          <button onClick={onClear} className="rounded-full px-2 py-1 text-xs font-medium text-muted hover:text-foreground">
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const loading = state.status === "loading";
+
+  return (
+    <div className="sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface/95 px-4 py-3 shadow-sm backdrop-blur">
+      <span className="text-sm font-medium">
+        {loading ? "Fixing selected findings…" : `${count} selected`}
+      </span>
+      {!loading && (
+        <button
+          onClick={onSelectAll}
+          className="text-xs font-medium text-muted underline underline-offset-2 hover:text-foreground"
+        >
+          {allSelected ? "Deselect all" : "Select all fixable"}
+        </button>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onRun}
+          disabled={loading || count === 0}
+          className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+        >
+          {loading ? (
+            <>
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background border-t-transparent" />
+              Opening PR…
+            </>
+          ) : (
+            "Fix selected & open PR"
+          )}
+        </button>
+        {!loading && (
+          <button onClick={onClear} className="rounded-full px-2 py-1 text-xs font-medium text-muted hover:text-foreground">
+            Clear
+          </button>
+        )}
+      </div>
+
+      {state.status === "error" && (
+        <p className="w-full rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+          {state.error}
+        </p>
+      )}
+      {loading && (
+        <p className="w-full text-xs text-muted">
+          Reading each file, generating fixes, and opening one pull request — this can take a
+          moment.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -803,6 +1219,21 @@ function PriorityHeader({ priority, count }: { priority: Priority; count: number
     <div className="flex items-center gap-2.5">
       <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
       <h2 className={`text-sm font-semibold ${meta.text}`}>{meta.label}</h2>
+      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium tabular-nums text-muted">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function AreaHeader({ area, count }: { area: Area; count: number }) {
+  const meta = AREA_META[area];
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-0.5 text-sm font-semibold">
+        {meta.label}
+      </span>
+      <span className="text-xs text-muted">{meta.detail}</span>
       <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium tabular-nums text-muted">
         {count}
       </span>

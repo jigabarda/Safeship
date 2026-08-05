@@ -1,5 +1,12 @@
 import { buildUserPrompt, parseExplain, SYSTEM_PROMPT } from "./prompt";
-import type { ExplainInput, ExplainOutput, LlmClient } from "./types";
+import { readLines } from "./stream";
+import type {
+  ChatMessage,
+  CompleteOptions,
+  ExplainInput,
+  ExplainOutput,
+  LlmClient,
+} from "./types";
 
 /**
  * Fully-local provider. Talks to the Ollama HTTP API (default :11434).
@@ -41,5 +48,61 @@ export class OllamaClient implements LlmClient {
     const content = data.message?.content;
     if (!content) throw new Error("Ollama returned an empty response");
     return parseExplain(content, input);
+  }
+
+  async complete(messages: ChatMessage[], opts: CompleteOptions = {}): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        stream: false,
+        ...(opts.json ? { format: "json" } : {}),
+        options: { temperature: opts.temperature ?? 0.3 },
+        messages,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Ollama HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    const data = (await res.json()) as { message?: { content?: string } };
+    const content = data.message?.content;
+    if (!content) throw new Error("Ollama returned an empty response");
+    return content;
+  }
+
+  async *stream(messages: ChatMessage[], opts: CompleteOptions = {}): AsyncIterable<string> {
+    const res = await fetch(`${this.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        stream: true,
+        options: { temperature: opts.temperature ?? 0.3 },
+        messages,
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Ollama HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    // NDJSON: one JSON object per line, each with an incremental message chunk.
+    for await (const line of readLines(res.body)) {
+      const t = line.trim();
+      if (!t) continue;
+      try {
+        const json = JSON.parse(t) as { message?: { content?: string }; done?: boolean };
+        const chunk = json.message?.content;
+        if (chunk) yield chunk;
+        if (json.done) return;
+      } catch {
+        /* ignore partial lines */
+      }
+    }
   }
 }

@@ -14,13 +14,39 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  githubId    String   @unique
-  username    String
-  email       String?
-  accessToken String // GitHub OAuth token — kept server-side only, never logged
-  createdAt   DateTime @default(now())
-  scans       Scan[]
+  id            String         @id @default(cuid())
+  githubId      String         @unique
+  username      String
+  email         String?
+  accessToken   String // GitHub OAuth token — kept server-side only, never logged
+  createdAt     DateTime       @default(now())
+  // "Bring your own model" — a library of the user's OpenAI-compatible models
+  // (keys stored encrypted), plus which model each AI feature uses. A null
+  // assignment means Safeship's built-in default.
+  llmModels        LlmModel[]
+  explainModelId   String?
+  advisorModelId   String?
+  assistantModelId String?
+  fixModelId       String?
+  scans         Scan[]
+  advisorRuns   AdvisorRun[]
+  conversations Conversation[]
+}
+
+// One saved OpenAI-compatible model connection. The API key is encrypted
+// (AES-256-GCM) and never returned to the client.
+model LlmModel {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  provider  String
+  baseUrl   String
+  model     String
+  apiKeyEnc String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Scan {
@@ -55,4 +81,47 @@ model Finding {
   suggestedFix     String? // LLM: how to fix it (snippet or steps)
   redacted         Boolean  @default(false) // true if we scrubbed a secret value
   createdAt        DateTime @default(now())
+}
+
+// A saved Advisor review so users can see recent activity and reopen results.
+model AdvisorRun {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  repoFullName    String
+  tool            String // schema | stack | optimize
+  rating          String // good | fair | poor
+  headline        String
+  markdown        String
+  /// Parsed ER-diagram model (schema tool only).
+  model           Json?
+  /// string[] of file paths the review read.
+  filesConsidered Json?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// A saved Assistant chat, so conversations persist across sessions.
+model Conversation {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  title     String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user | assistant
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
 }

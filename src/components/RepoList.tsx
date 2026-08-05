@@ -2,15 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Repo } from "@/lib/github/repos";
 
-export interface Repo {
-  id: number;
-  fullName: string;
-  private: boolean;
-  url: string;
-  updatedAt: string | null;
-  language: string | null;
-}
+export type { Repo };
 
 export function RepoList({ repos }: { repos: Repo[] }) {
   const router = useRouter();

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Safeship — is your code safe to ship?",
+  title: "Safeship",
   description:
     "A friendly security check for AI-assisted developers. Safeship reads your code, finds leaked secrets and known vulnerabilities, and explains them in plain English. It only reads code — it never attacks anything.",
 };
@@ -26,9 +26,16 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        {/* Resolve theme before paint: saved choice, else OS preference. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
+          }}
+        />
         {children}
         <footer className="border-t border-line">
           <div className="mx-auto w-full max-w-5xl px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted">

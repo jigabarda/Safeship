@@ -7,9 +7,12 @@ import { usePathname } from "next/navigation";
 // from AppHeader so the header itself can stay a server component (it renders
 // the sign-out server action).
 const TABS: Array<{ href: string; label: string; match: string[] }> = [
-  { href: "/dashboard", label: "Repositories", match: ["/dashboard"] },
-  // A single report lives at /scan/[id], so it highlights the Scans tab too.
-  { href: "/scans", label: "Scans", match: ["/scans", "/scan/"] },
+  { href: "/dashboard", label: "Dashboard", match: ["/dashboard"] },
+  // Repositories holds the repo list AND their scan history; a report
+  // (/scan/[id]) and the old /scans route both keep this tab active.
+  { href: "/repositories", label: "Repositories", match: ["/repositories", "/scans", "/scan/"] },
+  { href: "/advisor", label: "Advisor", match: ["/advisor"] },
+  { href: "/assistant", label: "Assistant", match: ["/assistant"] },
 ];
 
 export function NavTabs() {
@@ -28,8 +31,8 @@ export function NavTabs() {
             aria-current={active ? "page" : undefined}
             className={
               active
-                ? "rounded-full bg-surface-2 px-3 py-1.5 text-sm font-medium text-foreground"
-                : "rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
+                ? "rounded-full bg-surface-2 px-3.5 py-1.5 text-sm font-medium text-foreground ring-1 ring-inset ring-line"
+                : "rounded-full px-3.5 py-1.5 text-sm font-medium text-muted hover:bg-surface-2/60 hover:text-foreground"
             }
           >
             {tab.label}

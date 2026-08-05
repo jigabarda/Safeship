@@ -8,7 +8,13 @@ function GithubMark() {
   );
 }
 
-export function SignInButton({ label = "Sign in with GitHub" }: { label?: string }) {
+export function SignInButton({
+  label = "Sign in with GitHub",
+  compact = false,
+}: {
+  label?: string;
+  compact?: boolean;
+}) {
   return (
     <form
       action={async () => {
@@ -18,7 +24,11 @@ export function SignInButton({ label = "Sign in with GitHub" }: { label?: string
     >
       <button
         type="submit"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-foreground px-6 text-background font-medium shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+        className={
+          compact
+            ? "inline-flex h-9 items-center justify-center gap-2 rounded-full bg-foreground px-4 text-sm text-background font-medium shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+            : "inline-flex h-12 items-center justify-center gap-2 rounded-full bg-foreground px-6 text-background font-medium shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+        }
       >
         <GithubMark />
         {label}
