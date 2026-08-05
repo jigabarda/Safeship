@@ -6,21 +6,22 @@ export default function Home() {
   return (
     <>
       <header className="sticky top-0 z-10 border-b border-line bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-6">
+        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-6 px-6">
           <Logo />
-          <div className="flex items-center gap-5">
-            <a
-              href="#how"
-              className="hidden text-sm font-medium text-muted transition-colors hover:text-foreground sm:inline"
-            >
-              How it works
-            </a>
+          <nav className="mx-auto hidden items-center gap-7 text-sm font-medium text-muted md:flex">
+            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
+            <a href="#advisor" className="transition-colors hover:text-foreground">AI co-pilot</a>
+            <a href="#safety" className="transition-colors hover:text-foreground">Safety</a>
+          </nav>
+          <div className="ml-auto flex items-center gap-4 md:ml-0">
             <Link
               href="/dashboard"
-              className="text-sm font-medium text-muted transition-colors hover:text-foreground"
+              className="hidden text-sm font-medium text-muted transition-colors hover:text-foreground sm:inline"
             >
-              Dashboard →
+              Dashboard
             </Link>
+            <SignInButton label="Sign in" compact />
           </div>
         </div>
       </header>
@@ -67,6 +68,7 @@ export default function Home() {
 
         {/* What it catches */}
         <Section
+          id="features"
           eyebrow="What it catches"
           title="Three ways your code leaks risk"
           subtitle="Every scan runs three trusted, open-source engines — so nothing common slips through."
@@ -121,6 +123,7 @@ export default function Home() {
 
         {/* More than a scanner */}
         <Section
+          id="advisor"
           eyebrow="More than a scanner"
           title="An AI security co-pilot"
           subtitle="Beyond finding issues, Safeship helps you understand and fix them."
@@ -151,6 +154,7 @@ export default function Home() {
 
         {/* Safety */}
         <Section
+          id="safety"
           eyebrow="Safe by default"
           title="It only ever reads — never attacks"
           subtitle="Security tooling you can point at your own code without worry."
