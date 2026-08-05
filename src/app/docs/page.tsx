@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { ReportPreview } from "@/components/ReportPreview";
 
 export const metadata: Metadata = {
   title: "Documentation · Safeship",
@@ -121,6 +122,8 @@ export default function DocsPage() {
                 search to focus.
               </li>
             </Ul>
+            <p className="mt-4 mb-2 text-sm text-muted">A finding looks like this:</p>
+            <ReportPreview />
           </Doc>
 
           <Doc id="fixing-issues" title="Fixing issues">
