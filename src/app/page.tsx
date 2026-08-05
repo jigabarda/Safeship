@@ -20,6 +20,7 @@ export default async function Home() {
             <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
             <a href="#advisor" className="transition-colors hover:text-foreground">AI co-pilot</a>
             <a href="#safety" className="transition-colors hover:text-foreground">Safety</a>
+            <Link href="/docs" className="transition-colors hover:text-foreground">Docs</Link>
           </nav>
           <div className="ml-auto flex items-center gap-4 md:ml-0">
             {signedIn ? (
