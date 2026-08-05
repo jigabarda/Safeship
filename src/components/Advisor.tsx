@@ -102,6 +102,7 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
   const [recent, setRecent] = useState<RecentRun[]>(initialRecent);
   const [repoOpen, setRepoOpen] = useState(false);
   const repoRef = useRef<HTMLDivElement | null>(null);
+  const resultRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!repoOpen) return;
@@ -111,6 +112,11 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [repoOpen]);
+
+  // Bring the result into view when it appears (new run or opened from history).
+  useEffect(() => {
+    if (result) resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [result]);
 
   function openRecent(r: RecentRun) {
     setError(null);
@@ -220,9 +226,17 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Control panel */}
-      <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 shadow-sm">
+    <div
+      className={
+        recent.length > 0
+          ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start"
+          : "flex flex-col gap-6"
+      }
+    >
+      {/* Main column: controls + result */}
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Control panel */}
+        <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 shadow-sm">
         {/* Repository — searchable dropdown */}
         <div ref={repoRef} className="relative flex flex-col gap-1.5">
           <label className="text-sm font-medium">Repository</label>
@@ -338,7 +352,10 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
       )}
 
       {result && (
-        <article className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <article
+          ref={resultRef}
+          className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-sm"
+        >
           <div className="flex flex-wrap items-center gap-3">
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${RATING_META[result.rating].cls}`}
@@ -421,11 +438,12 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
           </p>
         </article>
       )}
+      </div>
 
       {recent.length > 0 && (
-        <div className="flex flex-col gap-2">
+        <aside className="flex flex-col gap-2 lg:sticky lg:top-20">
           <span className="text-sm font-medium text-muted">Recent reviews</span>
-          <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+          <ul className="flex max-h-[75vh] flex-col divide-y divide-line overflow-y-auto rounded-xl border border-line bg-surface shadow-sm">
             {recent.map((r) => (
               <li key={r.id}>
                 <button
@@ -449,7 +467,7 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
               </li>
             ))}
           </ul>
-        </div>
+        </aside>
       )}
     </div>
   );
