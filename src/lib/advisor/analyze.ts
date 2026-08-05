@@ -17,13 +17,14 @@ import {
 } from "@/lib/github/repoFiles";
 import { redactText } from "@/lib/llm/index";
 import { parseSchema, type SchemaModel } from "@/lib/schema/parse";
+import { parseStructureTree, type StructureNode } from "./structureTree";
 
-export type AdvisorTool = "schema" | "stack" | "optimize";
+export type AdvisorTool = "schema" | "stack" | "optimize" | "structure";
 
-export const ADVISOR_TOOLS: AdvisorTool[] = ["schema", "stack", "optimize"];
+export const ADVISOR_TOOLS: AdvisorTool[] = ["schema", "stack", "optimize", "structure"];
 
 export function isAdvisorTool(v: string): v is AdvisorTool {
-  return v === "schema" || v === "stack" || v === "optimize";
+  return v === "schema" || v === "stack" || v === "optimize" || v === "structure";
 }
 
 export const ADVISOR_META: Record<
@@ -45,6 +46,11 @@ export const ADVISOR_META: Record<
     label: "Optimization",
     blurb: "Suggests structural, dependency, and performance cleanups.",
     emptyMessage: "Couldn't find enough project files to analyze.",
+  },
+  structure: {
+    label: "File structure",
+    blurb: "Recommends a clean, conventional folder structure — visualized before you apply it.",
+    emptyMessage: "Couldn't read this repository's file tree.",
   },
 };
 
@@ -211,12 +217,48 @@ export async function collectSchemaContext(
   return { ctx: { files, summary, truncated: collected.truncated }, model };
 }
 
+/**
+ * Context for the file-structure tool: the current file tree (so the model can
+ * see what's there) plus a few manifests (to detect the framework).
+ */
+export async function collectStructureContext(
+  fullName: string,
+  token: string,
+): Promise<CollectedContext | null> {
+  const branch = await getDefaultBranch(fullName, token);
+  const { files: tree, truncated } = await listRepoTree(fullName, branch, token);
+  if (tree.length === 0) return null;
+
+  const listing = tree
+    .map((f) => f.path)
+    .sort()
+    .slice(0, 400)
+    .join("\n");
+  const summary = [
+    treeSummary(tree, truncated),
+    "",
+    "Current file tree (sample):",
+    listing,
+  ].join("\n");
+
+  // A couple of manifests so the model recognizes the framework/conventions.
+  const files: Array<{ path: string; content: string }> = [];
+  for (const path of pickByRules(tree, STACK_FILES).slice(0, 3)) {
+    const file = await getFileContent(fullName, path, token, branch);
+    if (!file) continue;
+    files.push({ path, content: redactText(file.content.slice(0, 4_000)).text });
+  }
+
+  return { files, summary, truncated };
+}
+
 const SYSTEM_PROMPTS: Record<AdvisorTool, string> = {
   schema: `You are a senior database engineer reviewing a project's schema for a developer who may not be a DB expert. The user is also shown a visual ER diagram of these tables and relationships, so make your advice easy to map onto specific tables/columns.
 
 Assess table/model relationships, normalization, indexing, naming, and data-integrity risks. Name the exact tables and columns involved. Include a "## What to fix" section with a prioritized, concrete checklist the user can act on. Be honest but encouraging — plainly say whether the schema is well-designed.`,
   stack: `You are a pragmatic staff engineer advising on tech-stack choices. Given the project's manifests, config, and structure, assess whether the current stack is a sound fit, note strengths and risks, and recommend concrete improvements or alternatives (only when they'd genuinely help). Avoid hype; respect what already works.`,
   optimize: `You are a performance- and maintainability-minded engineer. From the project's manifests, config, and structure, suggest concrete optimizations: dependency cleanup, build/config improvements, structural refactors, and likely performance wins. Prioritize high-impact, low-risk changes.`,
+  structure: `You are a senior engineer advising on a project's file/folder structure. You are given the current file tree and its framework/stack. Recommend a clean, conventional, idiomatic structure for THIS stack — and respect the framework's required locations (e.g. Next.js app router, Rails conventions, Django apps). Explain what's disorganized and why, then give concrete, incremental migration steps. Base the recommended tree on the user's ACTUAL files, reorganized — do not invent unrelated files, and don't propose a risky big-bang rewrite. The user sees the recommended tree as a visual before applying anything.`,
 };
 
 const OUTPUT_INSTRUCTION = `Respond with STRICT JSON only (no markdown fences) matching exactly:
@@ -227,17 +269,33 @@ const OUTPUT_INSTRUCTION = `Respond with STRICT JSON only (no markdown fences) m
 }
 This is advice based on reading the files — never claim anything was executed or tested. Do not include real secret values.`;
 
+const STRUCTURE_OUTPUT_INSTRUCTION = `Respond with STRICT JSON only (no markdown fences) matching exactly:
+{
+  "rating": string,    // "good" | "fair" | "poor" — how well-organized the current structure is
+  "headline": string,  // one plain-language sentence
+  "markdown": string,  // the review, ending with a "## Migration steps" section
+  "tree": {            // the RECOMMENDED structure as a nested tree
+    "name": ".",       // root
+    "children": [
+      { "name": "src", "children": [ { "name": "components", "note": "reusable UI" } ] },
+      { "name": "package.json" }
+    ]
+  }
+}
+A folder has a "children" array; a file has none. "note" is optional (e.g. "moved from lib/"). Build the tree from the user's real files, reorganized. Never claim anything was executed.`;
+
 export function buildAdvisorMessages(tool: AdvisorTool, ctx: CollectedContext) {
   const fileBlocks = ctx.files
     .map((f) => `FILE: ${f.path}\n\`\`\`\n${f.content}\n\`\`\``)
     .join("\n\n");
+  const output = tool === "structure" ? STRUCTURE_OUTPUT_INSTRUCTION : OUTPUT_INSTRUCTION;
   const user = [
     `Project structure:`,
     ctx.summary,
     "",
     ctx.files.length > 0 ? `Relevant files:\n\n${fileBlocks}` : `(No individual files were extracted; base your review on the structure above.)`,
     "",
-    OUTPUT_INSTRUCTION,
+    output,
   ].join("\n");
   return [
     { role: "system" as const, content: SYSTEM_PROMPTS[tool] },
@@ -290,4 +348,20 @@ export function parseAdvisorResult(raw: string): AdvisorResult {
     headline: toStr(parsed.headline).trim() || "Review complete.",
     markdown,
   };
+}
+
+/** Structure tool: the standard review plus the recommended tree. */
+export function parseStructureResult(raw: string): {
+  result: AdvisorResult;
+  tree: StructureNode | null;
+} {
+  const result = parseAdvisorResult(raw);
+  let tree: StructureNode | null = null;
+  try {
+    const json = JSON.parse(extractJson(raw)) as { tree?: unknown };
+    tree = parseStructureTree(json.tree);
+  } catch {
+    tree = null;
+  }
+  return { result, tree };
 }

@@ -3,13 +3,18 @@
 import { useMemo, useState } from "react";
 import type { Repo } from "@/lib/github/repos";
 import type { SchemaModel } from "@/lib/schema/parse";
+import type { StructureNode } from "@/lib/advisor/structureTree";
 import { Markdown } from "@/components/Markdown";
 import { SchemaDiagram } from "@/components/SchemaDiagram";
+import { StructureTree } from "@/components/StructureTree";
 import { LocalTime } from "@/components/LocalTime";
 
-type Tool = "schema" | "stack" | "optimize";
+type Tool = "schema" | "stack" | "optimize" | "structure";
 /** Exported for the server page that hydrates recent runs. */
 export type AdvisorToolValue = Tool;
+
+/** The visual a tool may carry: a schema ER model or a folder tree. */
+type VisualModel = SchemaModel | StructureNode;
 
 export interface RecentRun {
   id: string;
@@ -18,26 +23,27 @@ export interface RecentRun {
   rating: "good" | "fair" | "poor";
   headline: string;
   markdown: string;
-  model?: SchemaModel | null;
+  model?: VisualModel | null;
   filesConsidered: string[];
   createdAt: string;
 }
 
 const TOOLS: Array<{ value: Tool; label: string; blurb: string }> = [
   { value: "schema", label: "Schema review", blurb: "Visualize the tables and get design fixes." },
+  { value: "structure", label: "File structure", blurb: "See a clean folder layout, then open a PR." },
   { value: "stack", label: "Tech stack", blurb: "Is the stack a good fit? Recommendations." },
   { value: "optimize", label: "Optimization", blurb: "Structural, dependency & performance cleanups." },
 ];
 
-/** AI review result. Schema reviews also carry a parsed diagram model. */
+/** AI review result. Schema/Structure reviews also carry a visual model. */
 interface Result {
   tool: Tool;
   repoFullName: string;
   rating: "good" | "fair" | "poor";
   headline: string;
   markdown: string;
-  /** Present for schema reviews — drives the ER diagram. */
-  model?: SchemaModel;
+  /** Schema reviews → ER model; Structure reviews → recommended folder tree. */
+  model?: VisualModel;
   filesConsidered: string[];
   truncated: boolean;
 }
@@ -59,6 +65,7 @@ type ApplyState =
 
 const TOOL_LABEL: Record<Tool, string> = {
   schema: "Schema",
+  structure: "Structure",
   stack: "Stack",
   optimize: "Optimize",
 };
@@ -120,11 +127,16 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
   async function runApply() {
     if (!result || apply.status === "loading") return;
     setApply({ status: "loading" });
+    const isStructure = result.tool === "structure";
+    const endpoint = isStructure ? "/api/advisor/apply-structure" : "/api/advisor/apply-schema";
+    const body = isStructure
+      ? { repoFullName: result.repoFullName, markdown: result.markdown, tree: result.model }
+      : { repoFullName: result.repoFullName, recommendations: result.markdown };
     try {
-      const res = await fetch("/api/advisor/apply-schema", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoFullName: result.repoFullName, recommendations: result.markdown }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -308,7 +320,9 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
           <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-brand border-t-transparent" />
           {tool === "schema"
             ? "Reading the schema, drawing it, and writing suggestions…"
-            : "Reading the repo and writing a review…"}
+            : tool === "structure"
+              ? "Mapping your files and designing a clean structure…"
+              : "Reading the repo and writing a review…"}
         </div>
       )}
 
@@ -323,22 +337,35 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
             <p className="text-sm font-medium">{result.headline}</p>
           </div>
 
-          {result.model && result.model.tables.length > 0 && (
+          {result.tool === "schema" &&
+            result.model &&
+            "tables" in result.model &&
+            result.model.tables.length > 0 && (
+              <div className="border-t border-line pt-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Schema overview
+                </p>
+                <SchemaDiagram model={result.model} />
+              </div>
+            )}
+
+          {result.tool === "schema" &&
+            (!result.model || !("tables" in result.model) || result.model.tables.length === 0) && (
+              <p className="border-t border-line pt-4 text-xs text-muted">
+                Couldn&apos;t auto-draw a diagram for this schema format — the visualizer currently
+                understands Prisma, SQL <span className="font-mono">CREATE TABLE</span>, and Rails{" "}
+                <span className="font-mono">schema.rb</span>. The review below is still based on your
+                schema files.
+              </p>
+            )}
+
+          {result.tool === "structure" && result.model && "name" in result.model && (
             <div className="border-t border-line pt-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
-                Schema overview
+                Recommended structure
               </p>
-              <SchemaDiagram model={result.model} />
+              <StructureTree root={result.model} />
             </div>
-          )}
-
-          {result.tool === "schema" && (!result.model || result.model.tables.length === 0) && (
-            <p className="border-t border-line pt-4 text-xs text-muted">
-              Couldn&apos;t auto-draw a diagram for this schema format — the visualizer currently
-              understands Prisma, SQL <span className="font-mono">CREATE TABLE</span>, and Rails{" "}
-              <span className="font-mono">schema.rb</span>. The review below is still based on your
-              schema files.
-            </p>
           )}
 
           <div className="border-t border-line pt-4">
@@ -346,7 +373,21 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
           </div>
 
           {result.tool === "schema" && (
-            <ApplySchema state={apply} onApply={runApply} />
+            <ApplyPanel
+              state={apply}
+              onApply={runApply}
+              actionLabel="Improve schema & open PR"
+              description="Safeship applies the safe, high-value fixes above the correct way for your stack — editing the schema file (Prisma/SQL) or adding a migration (Rails) — and opens a pull request you review. Nothing is applied to a database."
+            />
+          )}
+
+          {result.tool === "structure" && result.model && "name" in result.model && (
+            <ApplyPanel
+              state={apply}
+              onApply={runApply}
+              actionLabel="Add STRUCTURE.md & open PR"
+              description="Opens a pull request that adds a STRUCTURE.md documenting the recommended layout and migration steps. Safe — it doesn't move or rename any of your files, so nothing in your build can break."
+            />
           )}
 
           {result.filesConsidered.length > 0 && (
@@ -374,11 +415,20 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
 }
 
 /**
- * "Apply these fixes" — turns the schema review's recommendations into one
- * reviewable pull request (an edit for Prisma/SQL, a new migration for Rails).
- * Never touches a database; the file is sent to the AI provider to generate it.
+ * "Apply these fixes" — turns an Advisor recommendation into one reviewable pull
+ * request. Reused by the schema and structure tools with tool-specific copy.
  */
-function ApplySchema({ state, onApply }: { state: ApplyState; onApply: () => void }) {
+function ApplyPanel({
+  state,
+  onApply,
+  actionLabel,
+  description,
+}: {
+  state: ApplyState;
+  onApply: () => void;
+  actionLabel: string;
+  description: string;
+}) {
   if (state.status === "done") {
     return (
       <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-2/30 p-3">
@@ -386,7 +436,7 @@ function ApplySchema({ state, onApply }: { state: ApplyState; onApply: () => voi
           <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
             <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          {state.alreadyOpen ? "A schema PR is already open" : "Schema PR opened"}
+          {state.alreadyOpen ? "A pull request is already open" : "Pull request opened"}
         </p>
         <p className="text-xs text-muted">
           {state.changeKind === "create" ? "Added" : "Edited"}{" "}
@@ -432,23 +482,19 @@ function ApplySchema({ state, onApply }: { state: ApplyState; onApply: () => voi
         <button
           onClick={onApply}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
         >
           {loading ? (
             <>
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-background border-t-transparent" />
               Opening PR…
             </>
           ) : (
-            "Improve schema & open PR"
+            actionLabel
           )}
         </button>
       </div>
-      <p className="text-xs text-muted">
-        Safeship applies the safe, high-value fixes above the correct way for your stack — editing
-        the schema file (Prisma/SQL) or adding a migration (Rails) — and opens a pull request you
-        review. Nothing is applied to a database.
-      </p>
+      <p className="text-xs text-muted">{description}</p>
       {state.status === "error" && (
         <p className="rounded bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
           {state.error}

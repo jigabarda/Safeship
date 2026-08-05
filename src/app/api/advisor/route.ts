@@ -9,9 +9,13 @@ import {
   buildAdvisorMessages,
   collectContext,
   collectSchemaContext,
+  collectStructureContext,
   isAdvisorTool,
   parseAdvisorResult,
+  parseStructureResult,
+  type CollectedContext,
 } from "@/lib/advisor/analyze";
+import type { StructureNode } from "@/lib/advisor/structureTree";
 import type { SchemaModel } from "@/lib/schema/parse";
 
 // Run one advisor tool (schema / stack / optimize) against a repo the signed-in
@@ -56,10 +60,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Schema review is unified: parse the schema for the visualizer AND send it
-    // to the AI for suggestions, so users see the diagram and what to fix.
-    let model: SchemaModel | undefined;
-    let ctx;
+    // Schema and Structure both produce a visual (ER diagram / folder tree) shown
+    // to the user alongside the AI's suggestions. The visual is stored in `model`.
+    let model: SchemaModel | StructureNode | undefined;
+    let ctx: CollectedContext;
     if (tool === "schema") {
       const bundle = await collectSchemaContext(repoFullName, user.accessToken);
       if (!bundle) {
@@ -67,19 +71,33 @@ export async function POST(request: Request) {
       }
       ctx = bundle.ctx;
       model = bundle.model;
+    } else if (tool === "structure") {
+      const c = await collectStructureContext(repoFullName, user.accessToken);
+      if (!c) {
+        return Response.json({ error: ADVISOR_META.structure.emptyMessage }, { status: 422 });
+      }
+      ctx = c;
     } else {
-      ctx = await collectContext(tool, repoFullName, user.accessToken);
-      if (!ctx) {
+      const c = await collectContext(tool, repoFullName, user.accessToken);
+      if (!c) {
         return Response.json({ error: ADVISOR_META[tool].emptyMessage }, { status: 422 });
       }
+      ctx = c;
     }
 
     const raw = await llm.complete(buildAdvisorMessages(tool, ctx), {
       temperature: 0.3,
       json: true,
-      maxTokens: 1500,
+      maxTokens: tool === "structure" ? 2200 : 1500,
     });
-    const result = parseAdvisorResult(raw);
+    let result;
+    if (tool === "structure") {
+      const parsed = parseStructureResult(raw);
+      result = parsed.result;
+      model = parsed.tree ?? undefined;
+    } else {
+      result = parseAdvisorResult(raw);
+    }
     const filesConsidered = ctx.files.map((f) => f.path);
 
     // Save the review so it shows up in the user's recent activity.
