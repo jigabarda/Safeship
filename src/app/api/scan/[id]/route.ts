@@ -58,6 +58,8 @@ export async function GET(
       plainExplanation: f.plainExplanation,
       suggestedFix: f.suggestedFix,
       redacted: f.redacted,
+      dismissed: f.dismissed,
+      dismissReason: f.dismissReason,
     })),
   });
 }

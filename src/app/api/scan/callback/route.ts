@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import type { Severity } from "@/lib/engines/types";
 import { computeScore } from "@/lib/scan/score";
+import { dismissalKey, priorDismissalsForScan } from "@/lib/scan/dismissals";
 
 // Receives REDACTED findings from the GitHub Actions runner and persists them.
 // Authenticated with a shared secret (SCAN_CALLBACK_SECRET) that the runner sends
@@ -67,21 +68,29 @@ export async function POST(request: Request) {
   }
 
   if (parsed.findings.length > 0) {
+    const prior = await priorDismissalsForScan(scan.id);
     await db.finding.createMany({
-      data: parsed.findings.map((f) => ({
-        scanId: scan.id,
-        engine: f.engine,
-        ruleId: f.ruleId,
-        severity: f.severity,
-        priority: fallbackPriority(f.severity),
-        title: f.title,
-        filePath: f.filePath,
-        line: f.line,
-        rawMessage: f.rawMessage,
-        plainExplanation: null,
-        suggestedFix: null,
-        redacted: f.redacted,
-      })),
+      data: parsed.findings.map((f) => {
+        const key = dismissalKey(f.engine, f.ruleId, f.filePath);
+        const carried = prior.has(key);
+        return {
+          scanId: scan.id,
+          engine: f.engine,
+          ruleId: f.ruleId,
+          severity: f.severity,
+          priority: fallbackPriority(f.severity),
+          title: f.title,
+          filePath: f.filePath,
+          line: f.line,
+          rawMessage: f.rawMessage,
+          plainExplanation: null,
+          suggestedFix: null,
+          redacted: f.redacted,
+          dismissed: carried,
+          dismissReason: carried ? (prior.get(key) ?? null) : null,
+          dismissedAt: carried ? new Date() : null,
+        };
+      }),
     });
   }
 
