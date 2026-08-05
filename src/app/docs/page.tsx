@@ -16,6 +16,7 @@ const TOC = [
   { id: "assistant", label: "Assistant" },
   { id: "byo-model", label: "Bring your own model" },
   { id: "privacy", label: "Privacy & safety" },
+  { id: "troubleshooting", label: "Troubleshooting" },
   { id: "faq", label: "FAQ" },
 ];
 
@@ -194,6 +195,56 @@ export default function DocsPage() {
               <li>
                 Safeship only writes through pull requests you review and merge — never to your
                 default branch.
+              </li>
+            </Ul>
+            <p className="mt-2 font-medium text-foreground">What Safeship keeps</p>
+            <Ul>
+              <li>
+                <strong className="text-foreground">Saved to your account:</strong> your scans and
+                their findings, Advisor reviews, and Assistant conversations — so you can revisit
+                them.
+              </li>
+              <li>
+                <strong className="text-foreground">Not kept:</strong> your source code. It&apos;s
+                scanned in a temporary sandbox and discarded afterward.
+              </li>
+              <li>
+                If you add your own AI model, the API key is stored encrypted and used only for your
+                requests.
+              </li>
+            </Ul>
+          </Doc>
+
+          <Doc id="troubleshooting" title="Troubleshooting">
+            <Ul>
+              <li>
+                <strong className="text-foreground">A scan is stuck or failed.</strong> Scans run in
+                the background; one that loses its runner is marked failed automatically — just start
+                it again. Very large repositories take longer.
+              </li>
+              <li>
+                <strong className="text-foreground">No findings.</strong> Often good news. It can also
+                mean the repo has no files the engines recognize — Safeship reports only what
+                Gitleaks, Semgrep, and OSV detect.
+              </li>
+              <li>
+                <strong className="text-foreground">Explanations or fixes are slow.</strong> The AI is
+                generating them; each explanation is cached after the first time. Bring your own
+                faster model in <Code>Settings</Code> if you like.
+              </li>
+              <li>
+                <strong className="text-foreground">&quot;Save &amp; test&quot; fails for a model.</strong>{" "}
+                Check the base URL, model name, and API key — the message shown is the provider&apos;s
+                own error.
+              </li>
+              <li>
+                <strong className="text-foreground">A fix was skipped.</strong> Some files can&apos;t
+                be auto-fixed (for example, dependency lockfiles). Apply the suggested fix manually in
+                those cases.
+              </li>
+              <li>
+                <strong className="text-foreground">GitHub permission errors.</strong> Sign out and
+                back in to refresh Safeship&apos;s access to your repositories.
               </li>
             </Ul>
           </Doc>
