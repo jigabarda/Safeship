@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/auth";
 import { SignInButton } from "@/components/AuthButtons";
 import { Logo } from "@/components/Logo";
 
-export default function Home() {
+const BTN_PRIMARY =
+  "inline-flex h-12 items-center justify-center gap-2 rounded-full bg-foreground px-6 font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98]";
+
+export default async function Home() {
+  const session = await auth();
+  const signedIn = Boolean(session?.user?.id);
+
   return (
     <>
       <header className="sticky top-0 z-10 border-b border-line bg-background/80 backdrop-blur">
@@ -15,13 +22,24 @@ export default function Home() {
             <a href="#safety" className="transition-colors hover:text-foreground">Safety</a>
           </nav>
           <div className="ml-auto flex items-center gap-4 md:ml-0">
-            <Link
-              href="/dashboard"
-              className="hidden text-sm font-medium text-muted transition-colors hover:text-foreground sm:inline"
-            >
-              Dashboard
-            </Link>
-            <SignInButton label="Sign in" compact />
+            {signedIn ? (
+              <Link
+                href="/dashboard"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-foreground px-4 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+              >
+                Open dashboard →
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="hidden text-sm font-medium text-muted transition-colors hover:text-foreground sm:inline"
+                >
+                  Dashboard
+                </Link>
+                <SignInButton label="Sign in" compact />
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -54,15 +72,25 @@ export default function Home() {
 
           <div className="flex flex-col items-center gap-3">
             <div className="flex flex-col gap-3 sm:flex-row">
-              <SignInButton />
-              <Link
-                href="/dashboard"
-                className="inline-flex h-12 items-center justify-center rounded-full border border-line-strong px-6 font-medium transition-colors hover:bg-surface-2"
-              >
-                Go to dashboard
-              </Link>
+              {signedIn ? (
+                <Link href="/dashboard" className={BTN_PRIMARY}>
+                  Go to your dashboard →
+                </Link>
+              ) : (
+                <>
+                  <SignInButton />
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex h-12 items-center justify-center rounded-full border border-line-strong px-6 font-medium transition-colors hover:bg-surface-2"
+                  >
+                    Go to dashboard
+                  </Link>
+                </>
+              )}
             </div>
-            <p className="text-xs text-muted">Free · open-source engines · no credit card</p>
+            {!signedIn && (
+              <p className="text-xs text-muted">Free · open-source engines · no credit card</p>
+            )}
           </div>
         </div>
 
@@ -198,10 +226,17 @@ export default function Home() {
             Ready to see what&apos;s in your code?
           </h2>
           <p className="max-w-md text-muted">
-            Connect a repository and get your first security report in a couple of minutes. It&apos;s
-            free.
+            {signedIn
+              ? "Pick a repository and get a fresh security report in a couple of minutes."
+              : "Connect a repository and get your first security report in a couple of minutes. It's free."}
           </p>
-          <SignInButton />
+          {signedIn ? (
+            <Link href="/repositories" className={BTN_PRIMARY}>
+              Scan a repository →
+            </Link>
+          ) : (
+            <SignInButton />
+          )}
         </div>
       </main>
     </>
