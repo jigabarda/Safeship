@@ -21,6 +21,7 @@ import {
   type ScanStepKey,
 } from "@/lib/scan/steps";
 import { AREA_META, AREA_SORT, classifyArea, type Area } from "@/lib/scan/area";
+import { computeScore } from "@/lib/scan/score";
 
 export interface FindingData {
   id: string;
@@ -35,6 +36,8 @@ export interface FindingData {
   plainExplanation: string | null;
   suggestedFix: string | null;
   redacted: boolean;
+  dismissed?: boolean;
+  dismissReason?: string | null;
 }
 
 export interface ScanData {
@@ -367,10 +370,6 @@ function ScoreGauge({ score, colorClass }: { score: number; colorClass: string }
 type GroupBy = "priority" | "source" | "area";
 
 function Report({ data, scanId }: { data: ScanData; scanId: string }) {
-  const score = data.score ?? 0;
-  const meta = scoreMeta(score);
-  const total = data.findings.length;
-
   const [query, setQuery] = useState("");
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set());
   const [groupBy, setGroupBy] = useState<GroupBy>("priority");
@@ -379,6 +378,9 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
     Record<string, { plainExplanation: string; suggestedFix: string } | { error: true }>
   >({});
   const [fixes, setFixes] = useState<Record<string, FixState>>({});
+  const [dismissOverride, setDismissOverride] = useState<
+    Record<string, { dismissed: boolean; reason: string | null }>
+  >({});
 
   const runFix = useCallback(async (fid: string) => {
     setFixes((prev) => ({ ...prev, [fid]: { status: "loading" } }));
@@ -486,15 +488,74 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
     }
   }, [selectedForFix, scanId]);
 
+  // Overlay local dismiss changes on the polled data (like explains/fixes).
+  const findings = useMemo(
+    () =>
+      data.findings.map((f) => {
+        const o = dismissOverride[f.id];
+        return o ? { ...f, dismissed: o.dismissed, dismissReason: o.reason } : f;
+      }),
+    [data.findings, dismissOverride],
+  );
+  const activeFindings = useMemo(() => findings.filter((f) => !f.dismissed), [findings]);
+  const dismissedFindings = useMemo(() => findings.filter((f) => f.dismissed), [findings]);
+
+  // The score reflects only active findings, so dismissing a false positive
+  // improves it live.
+  const score = useMemo(
+    () => computeScore(activeFindings.map((f) => f.severity).filter(isSeverity)),
+    [activeFindings],
+  );
+  const meta = scoreMeta(score);
+  const total = activeFindings.length;
+
+  const setDismiss = useCallback((fid: string, dismissed: boolean, reason: string | null) => {
+    setDismissOverride((p) => ({ ...p, [fid]: { dismissed, reason } }));
+  }, []);
+
+  const dismissFinding = useCallback(
+    async (fid: string, reason: string) => {
+      setDismiss(fid, true, reason); // optimistic
+      try {
+        const res = await fetch(`/api/findings/${fid}/dismiss`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dismissed: true, reason }),
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        setDismiss(fid, false, null); // revert on failure
+      }
+    },
+    [setDismiss],
+  );
+
+  const restoreFinding = useCallback(
+    async (fid: string) => {
+      setDismiss(fid, false, null); // optimistic
+      try {
+        const res = await fetch(`/api/findings/${fid}/dismiss`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dismissed: false }),
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        /* a reload will reconcile if this rare failure happens */
+      }
+    },
+    [setDismiss],
+  );
+
   const severityCounts = useMemo(() => {
     const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const f of data.findings) if (isSeverity(f.severity)) counts[f.severity] += 1;
+    for (const f of activeFindings) if (isSeverity(f.severity)) counts[f.severity] += 1;
     return counts;
-  }, [data.findings]);
+  }, [activeFindings]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return data.findings.filter((f) => {
+    return activeFindings.filter((f) => {
       if (activeSeverities.size > 0 && !(isSeverity(f.severity) && activeSeverities.has(f.severity)))
         return false;
       if (!q) return true;
@@ -505,7 +566,7 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
         f.engine.toLowerCase().includes(q)
       );
     });
-  }, [data.findings, query, activeSeverities]);
+  }, [activeFindings, query, activeSeverities]);
 
   const groups = useMemo(() => groupFindings(filtered, groupBy), [filtered, groupBy]);
   const ordered = useMemo(() => groups.flatMap((g) => g.findings), [groups]);
@@ -581,8 +642,12 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
           <p className={`text-lg font-semibold ${meta.text}`}>{meta.label}</p>
           <p className="mt-1 text-sm text-muted">
             {total === 0
-              ? "We didn't find any issues. Nice work!"
-              : `We found ${total} thing${total === 1 ? "" : "s"} worth looking at. Tap a severity to filter.`}
+              ? dismissedFindings.length > 0
+                ? "No active findings — everything has been dismissed."
+                : "We didn't find any issues. Nice work!"
+              : `We found ${total} thing${total === 1 ? "" : "s"} worth looking at.${
+                  dismissedFindings.length > 0 ? ` (${dismissedFindings.length} dismissed)` : ""
+                } Tap a severity to filter.`}
           </p>
           {total > 0 && (
             <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
@@ -607,9 +672,9 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
         </div>
       </section>
 
-      {total === 0 ? (
+      {total === 0 && dismissedFindings.length === 0 ? (
         <EmptyState />
-      ) : (
+      ) : total > 0 ? (
         <>
           {/* Controls */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -698,6 +763,7 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
                               loading={isExplaining(f)}
                               fixState={fixes[f.id]}
                               onFix={() => runFix(f.id)}
+                              onDismiss={(reason) => dismissFinding(f.id, reason)}
                             />
                           </div>
                         )}
@@ -715,6 +781,7 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
                     loading={isExplaining(selected)}
                     fixState={fixes[selected.id]}
                     onFix={() => runFix(selected.id)}
+                    onDismiss={(reason) => dismissFinding(selected.id, reason)}
                   />
                 ) : (
                   <div className="rounded-xl border border-dashed border-line bg-surface/50 p-8 text-center text-sm text-muted">
@@ -725,6 +792,10 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
             </div>
           )}
         </>
+      ) : null}
+
+      {dismissedFindings.length > 0 && (
+        <DismissedSection findings={dismissedFindings} onRestore={restoreFinding} />
       )}
     </>
   );
@@ -866,11 +937,13 @@ function DetailPanel({
   loading = false,
   fixState,
   onFix,
+  onDismiss,
 }: {
   finding: FindingData;
   loading?: boolean;
   fixState?: FixState;
   onFix?: () => void;
+  onDismiss?: (reason: string) => void;
 }) {
   const priority = isPriority(finding.priority) ? finding.priority : "minor";
   const pmeta = PRIORITY_META[priority];
@@ -960,8 +1033,97 @@ function DetailPanel({
         {finding.filePath && onFix && (
           <FixWithAI filePath={finding.filePath} state={fixState} onFix={onFix} />
         )}
+
+        {onDismiss && <DismissControl onDismiss={onDismiss} />}
       </div>
     </article>
+  );
+}
+
+const DISMISS_REASONS: Array<{ key: string; label: string }> = [
+  { key: "false_positive", label: "False positive" },
+  { key: "accepted_risk", label: "Accepted risk" },
+  { key: "wont_fix", label: "Won't fix" },
+];
+
+/** A "Dismiss this finding" control that asks for a reason before hiding it. */
+function DismissControl({ onDismiss }: { onDismiss: (reason: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="self-start text-xs font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+      >
+        Dismiss this finding
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/30 p-3">
+      <span className="text-xs font-medium text-muted">Dismiss as…</span>
+      <div className="flex flex-wrap gap-1.5">
+        {DISMISS_REASONS.map((r) => (
+          <button
+            key={r.key}
+            onClick={() => onDismiss(r.key)}
+            className="rounded-full border border-line px-2.5 py-1 text-xs font-medium transition-colors hover:bg-surface-2"
+          >
+            {r.label}
+          </button>
+        ))}
+        <button
+          onClick={() => setOpen(false)}
+          className="rounded-full px-2 py-1 text-xs text-muted transition-colors hover:text-foreground"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const DISMISS_LABEL: Record<string, string> = {
+  false_positive: "False positive",
+  accepted_risk: "Accepted risk",
+  wont_fix: "Won't fix",
+};
+
+/** Collapsible list of dismissed findings, each restorable. */
+function DismissedSection({
+  findings,
+  onRestore,
+}: {
+  findings: FindingData[];
+  onRestore: (id: string) => void;
+}) {
+  return (
+    <details className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+      <summary className="cursor-pointer select-none text-sm font-medium text-muted">
+        Dismissed ({findings.length})
+      </summary>
+      <ul className="mt-3 flex flex-col divide-y divide-line">
+        {findings.map((f) => (
+          <li key={f.id} className="flex items-center justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-sm">{f.title}</p>
+              <p className="mt-0.5 text-xs text-muted">
+                {DISMISS_LABEL[f.dismissReason ?? ""] ?? "Dismissed"}
+                {f.filePath ? ` · ${f.filePath}` : ""}
+              </p>
+            </div>
+            <button
+              onClick={() => onRestore(f.id)}
+              className="shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:text-foreground"
+            >
+              Restore
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

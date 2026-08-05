@@ -80,6 +80,11 @@ model Finding {
   plainExplanation String? // LLM: what it means, for a non-expert
   suggestedFix     String? // LLM: how to fix it (snippet or steps)
   redacted         Boolean  @default(false) // true if we scrubbed a secret value
+  // Dismissal — a user can mark a finding as a false positive / accepted risk so
+  // it drops out of the active report and stays quiet on future re-scans.
+  dismissed        Boolean  @default(false)
+  dismissReason    String? // false_positive | accepted_risk | wont_fix
+  dismissedAt      DateTime?
   createdAt        DateTime @default(now())
 }
 
