@@ -14,9 +14,20 @@ export interface ScanListItem {
   status: string;
 }
 
-export function ScanList({ scans }: { scans: ScanListItem[] }) {
+export function ScanList({
+  scans,
+  maxHeightClass,
+}: {
+  scans: ScanListItem[];
+  /** When set, the list scrolls within this height (used in the sidebar). */
+  maxHeightClass?: string;
+}) {
   return (
-    <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+    <ul
+      className={`flex flex-col divide-y divide-line rounded-xl border border-line bg-surface shadow-sm ${
+        maxHeightClass ? `${maxHeightClass} overflow-y-auto` : "overflow-hidden"
+      }`}
+    >
       {scans.map((s) => (
         <li key={s.id}>
           <Link
