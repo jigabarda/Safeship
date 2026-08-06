@@ -37,7 +37,7 @@ export default async function RepositoriesPage() {
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start">
           {/* Pick a repo to scan */}
           <section className="flex min-w-0 flex-col gap-3">
             <div className="flex items-baseline justify-between">
@@ -54,7 +54,7 @@ export default async function RepositoriesPage() {
           </section>
 
           {/* Recent scans — the history of those repos */}
-          <aside className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-20">
+          <aside className="flex min-w-0 flex-col gap-3 md:sticky md:top-20">
             <div className="flex items-baseline justify-between">
               <h2 className="text-lg font-semibold">Recent scans</h2>
               {scans.length > 0 && (

@@ -228,12 +228,12 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
 
   return (
     <div
-      className={`flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] ${
-        showAllRecent ? "lg:items-start" : "lg:items-stretch"
+      className={`flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_19rem] ${
+        showAllRecent ? "md:items-start" : "md:items-stretch"
       }`}
     >
       {/* New review — top-left */}
-      <div className="flex min-w-0 flex-col gap-2 lg:col-start-1 lg:row-start-1">
+      <div className="flex min-w-0 flex-col gap-2 md:col-start-1 md:row-start-1">
           <span className="text-sm font-medium text-muted">New review</span>
           <div className="flex flex-1 flex-col gap-5 rounded-2xl border border-line bg-surface p-5 shadow-sm">
         {/* Repository — searchable dropdown */}
@@ -336,8 +336,8 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
 
         {recent.length > 0 && (
           <div
-            className={`flex min-w-0 flex-col gap-2 lg:col-start-2 lg:row-start-1 ${
-              showAllRecent ? "lg:row-span-2" : ""
+            className={`flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1 ${
+              showAllRecent ? "md:row-span-2" : ""
             }`}
           >
             <span className="text-sm font-medium text-muted">Recent reviews</span>
@@ -379,8 +379,8 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
         )}
 
         <div
-          className={`flex min-w-0 flex-col gap-6 lg:row-start-2 ${
-            showAllRecent ? "lg:col-start-1" : "lg:col-span-2"
+          className={`flex min-w-0 flex-col gap-6 md:row-start-2 ${
+            showAllRecent ? "md:col-start-1" : "md:col-span-2"
           }`}
         >
       {error && (
