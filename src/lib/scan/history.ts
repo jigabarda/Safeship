@@ -33,3 +33,39 @@ export async function getRepoScoreHistory(
     .filter((s): s is number => s !== null)
     .reverse();
 }
+
+export interface RepoScoreSummary {
+  /** Most recent completed score. */
+  score: number;
+  /** Change vs. the scan before it; null when there's only ever been one. */
+  delta: number | null;
+}
+
+/**
+ * Latest score (and change since the prior scan) for each repo the user has
+ * scanned. Used to annotate the repository list so it reads as a posture
+ * overview, not just a launcher. Keyed by `repoFullName`.
+ */
+export async function getRepoLatestScores(
+  userId: string,
+): Promise<Record<string, RepoScoreSummary>> {
+  const rows = await db.scan.findMany({
+    where: { userId, status: "done", score: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { repoFullName: true, score: true },
+  });
+
+  // Walk newest → oldest, keeping the first (latest) and second score per repo.
+  const summary: Record<string, RepoScoreSummary> = {};
+  const secondSeen = new Set<string>();
+  for (const { repoFullName, score } of rows) {
+    if (score === null) continue;
+    if (!(repoFullName in summary)) {
+      summary[repoFullName] = { score, delta: null };
+    } else if (!secondSeen.has(repoFullName)) {
+      summary[repoFullName].delta = summary[repoFullName].score - score;
+      secondSeen.add(repoFullName);
+    }
+  }
+  return summary;
+}

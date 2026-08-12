@@ -3,10 +3,19 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Repo } from "@/lib/github/repos";
+import { scoreMeta } from "@/lib/ui";
+import type { RepoScoreSummary } from "@/lib/scan/history";
 
 export type { Repo };
 
-export function RepoList({ repos }: { repos: Repo[] }) {
+export function RepoList({
+  repos,
+  scores = {},
+}: {
+  repos: Repo[];
+  /** Latest score + delta per repo (by fullName), for the posture badge. */
+  scores?: Record<string, RepoScoreSummary>;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [startingId, setStartingId] = useState<number | null>(null);
@@ -82,6 +91,7 @@ export function RepoList({ repos }: { repos: Repo[] }) {
                     private
                   </span>
                 )}
+                {scores[repo.fullName] && <ScoreBadge summary={scores[repo.fullName]} />}
               </p>
               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                 {repo.language && (
@@ -109,5 +119,27 @@ export function RepoList({ repos }: { repos: Repo[] }) {
         )}
       </ul>
     </div>
+  );
+}
+
+/** Latest safety score for a repo, with a small arrow showing the change. */
+function ScoreBadge({ summary }: { summary: RepoScoreSummary }) {
+  const { score, delta } = summary;
+  return (
+    <span
+      title={
+        delta === null
+          ? "Latest safety score"
+          : `Latest safety score (${delta >= 0 ? "+" : ""}${delta} since the previous scan)`
+      }
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold tabular-nums ring-1 ring-line ${scoreMeta(score).text}`}
+    >
+      {score}
+      {delta !== null && delta !== 0 && (
+        <span aria-hidden className={delta > 0 ? "text-emerald-500" : "text-rose-500"}>
+          {delta > 0 ? "▲" : "▼"}
+        </span>
+      )}
+    </span>
   );
 }
