@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Repo } from "@/lib/github/repos";
 import type { SchemaModel } from "@/lib/schema/parse";
 import type { StructureNode } from "@/lib/advisor/structureTree";
@@ -100,6 +100,24 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
   const [result, setResult] = useState<Result | null>(null);
   const [apply, setApply] = useState<ApplyState>({ status: "idle" });
   const [recent, setRecent] = useState<RecentRun[]>(initialRecent);
+  const [repoOpen, setRepoOpen] = useState(false);
+  const [showAllRecent, setShowAllRecent] = useState(false);
+  const repoRef = useRef<HTMLDivElement | null>(null);
+  const resultRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!repoOpen) return;
+    function onDown(e: MouseEvent) {
+      if (repoRef.current && !repoRef.current.contains(e.target as Node)) setRepoOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [repoOpen]);
+
+  // Bring the result into view when it appears (new run or opened from history).
+  useEffect(() => {
+    if (result) resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [result]);
 
   function openRecent(r: RecentRun) {
     setError(null);
@@ -209,106 +227,162 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {recent.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Recent reviews</span>
-          <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
-            {recent.map((r) => (
-              <li key={r.id}>
-                <button
-                  onClick={() => openRecent(r)}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
-                >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${RATING_DOT[r.rating]}`} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">{r.repoFullName}</span>
-                      <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
-                        {TOOL_LABEL[r.tool]}
-                      </span>
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-muted">{r.headline}</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted">
-                    <LocalTime iso={r.createdAt} withTime={false} />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Repo picker */}
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium">Repository</label>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter repositories…"
-          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted focus:border-brand"
-        />
-        <div className="max-h-44 overflow-y-auto rounded-xl border border-line bg-surface">
-          {filtered.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setRepoFullName(r.fullName)}
-              className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                repoFullName === r.fullName ? "bg-surface-2" : "hover:bg-surface-2/50"
-              }`}
-            >
-              <span className="truncate">{r.fullName}</span>
-              {repoFullName === r.fullName && (
-                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-brand" aria-hidden>
-                  <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-muted">No matches.</p>
+    <div
+      className={`flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_19rem] ${
+        showAllRecent ? "md:items-start" : "md:items-stretch"
+      }`}
+    >
+      {/* New review — top-left */}
+      <div className="flex min-w-0 flex-col gap-2 md:col-start-1 md:row-start-1">
+          <span className="text-sm font-medium text-muted">New review</span>
+          <div className="flex flex-1 flex-col gap-5 rounded-2xl border border-line bg-surface p-5 shadow-sm">
+        {/* Repository — searchable dropdown */}
+        <div ref={repoRef} className="relative flex flex-col gap-1.5">
+          <label className="text-sm font-medium">Repository</label>
+          <button
+            type="button"
+            onClick={() => setRepoOpen((o) => !o)}
+            aria-haspopup="listbox"
+            aria-expanded={repoOpen}
+            className="flex items-center justify-between gap-3 rounded-lg border border-line bg-background px-3 py-2 text-left text-sm outline-none transition-colors hover:border-line-strong focus:border-brand"
+          >
+            <span className={`truncate font-mono ${repoFullName ? "" : "text-muted"}`}>
+              {repoFullName || "Select a repository"}
+            </span>
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-muted" aria-hidden>
+              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {repoOpen && (
+            <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
+              <div className="border-b border-line p-2">
+                <input
+                  type="text"
+                  value={query}
+                  autoFocus
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Filter repositories…"
+                  className="w-full rounded-md border border-line bg-background px-2.5 py-1.5 text-sm outline-none placeholder:text-muted focus:border-brand"
+                />
+              </div>
+              <ul className="max-h-60 overflow-y-auto py-1">
+                {filtered.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      onClick={() => {
+                        setRepoFullName(r.fullName);
+                        setRepoOpen(false);
+                        setQuery("");
+                      }}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left font-mono text-sm transition-colors ${
+                        repoFullName === r.fullName ? "bg-surface-2" : "hover:bg-surface-2/50"
+                      }`}
+                    >
+                      <span className="truncate">{r.fullName}</span>
+                      {repoFullName === r.fullName && (
+                        <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-brand" aria-hidden>
+                          <path d="M5 12.5l4 4 10-10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
+                  </li>
+                ))}
+                {filtered.length === 0 && (
+                  <p className="px-3 py-6 text-center text-sm text-muted">No matches.</p>
+                )}
+              </ul>
+            </div>
           )}
         </div>
-      </div>
 
-      {/* Tool picker */}
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium">What should the AI review?</span>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {TOOLS.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setTool(t.value)}
-              aria-pressed={tool === t.value}
-              className={`rounded-xl border p-3 text-left transition-colors ${
-                tool === t.value
-                  ? "border-brand/50 bg-surface ring-1 ring-brand/30"
-                  : "border-line bg-surface hover:bg-surface-2/50"
-              }`}
-            >
-              <p className="text-sm font-semibold">{t.label}</p>
-              <p className="mt-0.5 text-xs text-muted">{t.blurb}</p>
-            </button>
-          ))}
+        {/* Tool picker — even 2×2 */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">What should the AI review?</span>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {TOOLS.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTool(t.value)}
+                aria-pressed={tool === t.value}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  tool === t.value
+                    ? "border-brand/50 bg-brand/5 ring-1 ring-brand/30"
+                    : "border-line bg-background hover:bg-surface-2/50"
+                }`}
+              >
+                <p className="text-sm font-semibold">{t.label}</p>
+                <p className="mt-0.5 text-xs text-muted">{t.blurb}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Run */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+          <p className="max-w-md text-xs text-muted">
+            Sends the relevant files from{" "}
+            <span className="font-mono">{repoFullName || "the repo"}</span> to the AI provider.
+          </p>
+          <button
+            onClick={run}
+            disabled={running || !repoFullName}
+            className="shrink-0 rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+          >
+            {running ? "Analyzing…" : "Run review"}
+          </button>
         </div>
       </div>
+        </div>
 
-      <div className="flex flex-col gap-2">
-        <button
-          onClick={run}
-          disabled={running || !repoFullName}
-          className="self-start rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+        {recent.length > 0 && (
+          <div
+            className={`flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1 ${
+              showAllRecent ? "md:row-span-2" : ""
+            }`}
+          >
+            <span className="text-sm font-medium text-muted">Recent reviews</span>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+              <ul className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
+                {(showAllRecent ? recent : recent.slice(0, 5)).map((r) => (
+                  <li key={r.id}>
+                    <button
+                      onClick={() => openRecent(r)}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
+                    >
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${RATING_DOT[r.rating]}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate font-mono text-sm">{r.repoFullName}</span>
+                          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                            {TOOL_LABEL[r.tool]}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-muted">{r.headline}</span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted">
+                        <LocalTime iso={r.createdAt} withTime={false} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {recent.length > 5 && (
+                <button
+                  onClick={() => setShowAllRecent((s) => !s)}
+                  className="border-t border-line py-2 text-center text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+                >
+                  {showAllRecent ? "Show less" : `View ${recent.length - 5} more`}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div
+          className={`flex min-w-0 flex-col gap-6 md:row-start-2 ${
+            showAllRecent ? "md:col-start-1" : "md:col-span-2"
+          }`}
         >
-          {running ? "Analyzing…" : "Run review"}
-        </button>
-        <p className="text-xs text-muted">
-          To review your code, Safeship sends the relevant files from{" "}
-          <span className="font-mono">{repoFullName || "the repo"}</span> to the AI provider.
-        </p>
-      </div>
-
       {error && (
         <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
           {error}
@@ -327,7 +401,10 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
       )}
 
       {result && (
-        <article className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+        <article
+          ref={resultRef}
+          className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-sm"
+        >
           <div className="flex flex-wrap items-center gap-3">
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${RATING_META[result.rating].cls}`}
@@ -410,6 +487,7 @@ export function Advisor({ repos, recent: initialRecent = [] }: { repos: Repo[]; 
           </p>
         </article>
       )}
+      </div>
     </div>
   );
 }

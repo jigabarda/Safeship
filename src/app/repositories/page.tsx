@@ -29,47 +29,49 @@ export default async function RepositoriesPage() {
         containerClass="max-w-5xl"
       />
 
-      <main className="animate-in mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-10">
+      <main className="animate-in mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-10">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Repositories</h1>
           <p className="mt-1 text-muted">
-            Pick a repository to scan, and see the scans you&apos;ve already run below.
+            Pick a repository to scan, and see the scans you&apos;ve already run.
           </p>
         </div>
 
-        {/* Pick a repo to scan */}
-        <section className="flex flex-col gap-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-lg font-semibold">Your repositories</h2>
-            {!error && <span className="text-sm text-muted">{repos.length} found</span>}
-          </div>
-          {error ? (
-            <p className="rounded-xl border border-amber-300/70 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-300">
-              {error}
-            </p>
-          ) : (
-            <RepoList repos={repos} />
-          )}
-        </section>
-
-        {/* Recent scans for those repos */}
-        <section className="flex flex-col gap-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-lg font-semibold">Recent scans</h2>
-            {scans.length > 0 && (
-              <span className="text-sm text-muted">
-                {scans.length} scan{scans.length === 1 ? "" : "s"}
-              </span>
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start">
+          {/* Pick a repo to scan */}
+          <section className="flex min-w-0 flex-col gap-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-lg font-semibold">Your repositories</h2>
+              {!error && <span className="text-sm text-muted">{repos.length} found</span>}
+            </div>
+            {error ? (
+              <p className="rounded-xl border border-amber-300/70 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-300">
+                {error}
+              </p>
+            ) : (
+              <RepoList repos={repos} />
             )}
-          </div>
-          {scans.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line-strong bg-surface/50 px-4 py-8 text-center text-sm text-muted">
-              No scans yet. Pick a repository above and hit <strong>Scan</strong>.
-            </p>
-          ) : (
-            <ScanList scans={scans} />
-          )}
-        </section>
+          </section>
+
+          {/* Recent scans — the history of those repos */}
+          <aside className="flex min-w-0 flex-col gap-3 md:sticky md:top-20">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-lg font-semibold">Recent scans</h2>
+              {scans.length > 0 && (
+                <span className="text-sm text-muted">
+                  {scans.length} scan{scans.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+            {scans.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line-strong bg-surface/50 px-4 py-8 text-center text-sm text-muted">
+                No scans yet. Pick a repository and hit <strong>Scan</strong>.
+              </p>
+            ) : (
+              <ScanList scans={scans} maxHeightClass="max-h-[calc(100vh-8rem)]" />
+            )}
+          </aside>
+        </div>
       </main>
     </>
   );

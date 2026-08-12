@@ -68,7 +68,7 @@ export function RepoList({ repos }: { repos: Repo[] }) {
           {error}
         </p>
       )}
-      <ul className="flex max-h-[26rem] flex-col divide-y divide-line overflow-y-auto rounded-xl border border-line bg-surface shadow-sm">
+      <ul className="flex max-h-[calc(100vh-13rem)] min-h-[20rem] flex-col divide-y divide-line overflow-y-auto rounded-xl border border-line bg-surface shadow-sm">
         {filtered.map((repo) => (
           <li
             key={repo.id}
