@@ -660,8 +660,16 @@ function Report({
         <ScoreGauge score={score} colorClass={meta.text} />
         <div className="flex-1 text-center sm:text-left">
           <p className={`text-lg font-semibold ${meta.text}`}>{meta.label}</p>
-          <div className="flex justify-center sm:justify-start">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-start">
             <ScoreTrend priorScores={priorScores} currentScore={score} />
+            {priorScores.length > 0 && (
+              <Link
+                href={`/scan/${scanId}/compare`}
+                className="text-xs font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+              >
+                Compare with previous →
+              </Link>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted">
             {total === 0
