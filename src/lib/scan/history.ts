@@ -39,6 +39,8 @@ export interface RepoScoreSummary {
   score: number;
   /** Change vs. the scan before it; null when there's only ever been one. */
   delta: number | null;
+  /** Id of the scan the latest score came from, for linking. */
+  latestScanId: string;
 }
 
 /**
@@ -52,16 +54,16 @@ export async function getRepoLatestScores(
   const rows = await db.scan.findMany({
     where: { userId, status: "done", score: { not: null } },
     orderBy: { createdAt: "desc" },
-    select: { repoFullName: true, score: true },
+    select: { id: true, repoFullName: true, score: true },
   });
 
   // Walk newest → oldest, keeping the first (latest) and second score per repo.
   const summary: Record<string, RepoScoreSummary> = {};
   const secondSeen = new Set<string>();
-  for (const { repoFullName, score } of rows) {
+  for (const { id, repoFullName, score } of rows) {
     if (score === null) continue;
     if (!(repoFullName in summary)) {
-      summary[repoFullName] = { score, delta: null };
+      summary[repoFullName] = { score, delta: null, latestScanId: id };
     } else if (!secondSeen.has(repoFullName)) {
       summary[repoFullName].delta = summary[repoFullName].score - score;
       secondSeen.add(repoFullName);

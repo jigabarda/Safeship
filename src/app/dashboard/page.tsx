@@ -6,6 +6,8 @@ import { SignInButton } from "@/components/AuthButtons";
 import { LocalTime } from "@/components/LocalTime";
 import { fetchReposCached } from "@/lib/github/repos";
 import { failStaleScans } from "@/lib/scan/staleScans";
+import { getRepoLatestScores } from "@/lib/scan/history";
+import { scoreMeta } from "@/lib/ui";
 
 const SEVERITIES = [
   { key: "critical", label: "Critical", bar: "bg-rose-500" },
@@ -44,7 +46,7 @@ export default async function DashboardPage() {
   const userId = session.user.id;
   const user = await db.user.findUnique({ where: { id: userId } });
 
-  const [reposResult, , scanCount, severityGroups, recentReviews] = await Promise.all([
+  const [reposResult, , scanCount, severityGroups, recentReviews, repoScores] = await Promise.all([
     user?.accessToken
       ? fetchReposCached(userId, user.accessToken)
       : Promise.resolve({ repos: [], error: "No GitHub token on file — please sign in again." }),
@@ -60,8 +62,15 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
       take: 4,
     }),
+    getRepoLatestScores(userId),
   ]);
   const { repos, error } = reposResult;
+
+  // Scanned repos, lowest score first — a triage list of what needs attention.
+  const rankedRepos = Object.entries(repoScores)
+    .map(([repoFullName, s]) => ({ repoFullName, ...s }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 6);
 
   // Tally findings by severity.
   const sev: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -170,6 +179,53 @@ export default async function DashboardPage() {
             )}
           </div>
         </section>
+
+        {/* Repositories by score — worst first, for triage */}
+        {rankedRepos.length > 0 && (
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Repositories by score</h2>
+              <Link
+                href="/repositories"
+                className="text-xs font-medium text-muted underline underline-offset-2 hover:text-foreground"
+              >
+                All repositories →
+              </Link>
+            </div>
+            <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+              {rankedRepos.map((r) => (
+                <li key={r.repoFullName}>
+                  <Link
+                    href={`/scan/${r.latestScanId}`}
+                    className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-surface-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium">{r.repoFullName}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {r.delta !== null && r.delta !== 0 && (
+                        <span
+                          className={`text-xs font-medium tabular-nums ${
+                            r.delta > 0
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-rose-600 dark:text-rose-400"
+                          }`}
+                        >
+                          {r.delta > 0 ? "▲+" : "▼"}
+                          {r.delta}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full bg-surface-2 px-2.5 py-1 text-sm font-semibold tabular-nums ${scoreMeta(r.score).text}`}
+                      >
+                        {r.score}
+                        <span className="text-muted">/100</span>
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* What you can do */}
         <section className="flex flex-col gap-4">
