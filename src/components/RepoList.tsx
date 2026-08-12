@@ -11,15 +11,49 @@ export type { Repo };
 export function RepoList({
   repos,
   scores = {},
+  watched = [],
 }: {
   repos: Repo[];
   /** Latest score + delta per repo (by fullName), for the posture badge. */
   scores?: Record<string, RepoScoreSummary>;
+  /** Repo full names the user has on their auto-rescan watch list. */
+  watched?: string[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [startingId, setStartingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [watchedSet, setWatchedSet] = useState<Set<string>>(() => new Set(watched));
+  const [watchBusy, setWatchBusy] = useState<string | null>(null);
+
+  async function toggleWatch(repo: Repo) {
+    const isWatched = watchedSet.has(repo.fullName);
+    // Optimistic update; revert on failure.
+    setWatchedSet((prev) => {
+      const next = new Set(prev);
+      if (isWatched) next.delete(repo.fullName);
+      else next.add(repo.fullName);
+      return next;
+    });
+    setWatchBusy(repo.fullName);
+    try {
+      const res = await fetch("/api/watch", {
+        method: isWatched ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoFullName: repo.fullName, repoUrl: repo.url }),
+      });
+      if (!res.ok) throw new Error("watch toggle failed");
+    } catch {
+      setWatchedSet((prev) => {
+        const next = new Set(prev);
+        if (isWatched) next.add(repo.fullName);
+        else next.delete(repo.fullName);
+        return next;
+      });
+    } finally {
+      setWatchBusy(null);
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -105,13 +139,46 @@ export function RepoList({
                   `updated ${new Date(repo.updatedAt).toLocaleDateString("en-US", { timeZone: "UTC" })}`}
               </p>
             </div>
-            <button
-              onClick={() => startScan(repo)}
-              disabled={startingId !== null}
-              className="shrink-0 rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-            >
-              {startingId === repo.id ? "Starting…" : "Scan"}
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => toggleWatch(repo)}
+                disabled={watchBusy === repo.fullName}
+                aria-pressed={watchedSet.has(repo.fullName)}
+                title={
+                  watchedSet.has(repo.fullName)
+                    ? "Watching — auto-rescans on a schedule. Click to stop."
+                    : "Watch — auto-rescan this repo on a schedule."
+                }
+                className={`rounded-full p-1.5 transition-colors disabled:opacity-50 ${
+                  watchedSet.has(repo.fullName)
+                    ? "text-brand"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden fill="none">
+                  <path
+                    d="M12 3a5 5 0 015 5c0 4 1.5 5.5 2.5 6.5H4.5C5.5 13.5 7 12 7 8a5 5 0 015-5z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                    fill={watchedSet.has(repo.fullName) ? "currentColor" : "none"}
+                  />
+                  <path
+                    d="M10 18a2 2 0 004 0"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={() => startScan(repo)}
+                disabled={startingId !== null}
+                className="rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+              >
+                {startingId === repo.id ? "Starting…" : "Scan"}
+              </button>
+            </div>
           </li>
         ))}
         {filtered.length === 0 && (

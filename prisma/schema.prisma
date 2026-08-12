@@ -31,6 +31,21 @@ model User {
   scans         Scan[]
   advisorRuns   AdvisorRun[]
   conversations Conversation[]
+  watchedRepos  WatchedRepo[]
+}
+
+// A repo the user asked Safeship to re-scan automatically on a schedule, so its
+// safety score stays current without them remembering to click Scan.
+model WatchedRepo {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoFullName String
+  repoUrl      String
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, repoFullName])
+  @@index([userId])
 }
 
 // One saved OpenAI-compatible model connection. The API key is encrypted
