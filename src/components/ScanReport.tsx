@@ -670,6 +670,12 @@ function Report({
                 Compare with previous →
               </Link>
             )}
+            <Link
+              href={`/scan/${scanId}/print`}
+              className="text-xs font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              Export / Print →
+            </Link>
           </div>
           <p className="mt-1 text-sm text-muted">
             {total === 0
