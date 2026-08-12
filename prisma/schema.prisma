@@ -60,6 +60,10 @@ model Scan {
   error        String?
   /// Append-only progress events: [{ "key": "cloning", "at": "2026-01-01T00:00:00Z" }]
   steps        Json?
+  // Opt-in read-only public sharing. Null token = private (the default). A random
+  // token is minted when the owner chooses to share, and cleared to revoke.
+  shareToken   String?   @unique
+  sharedAt     DateTime?
   createdAt    DateTime  @default(now())
   finishedAt   DateTime?
   findings     Finding[]
