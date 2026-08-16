@@ -31,6 +31,21 @@ model User {
   scans         Scan[]
   advisorRuns   AdvisorRun[]
   conversations Conversation[]
+  watchedRepos  WatchedRepo[]
+}
+
+// A repo the user asked Safeship to re-scan automatically on a schedule, so its
+// safety score stays current without them remembering to click Scan.
+model WatchedRepo {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoFullName String
+  repoUrl      String
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, repoFullName])
+  @@index([userId])
 }
 
 // One saved OpenAI-compatible model connection. The API key is encrypted
@@ -60,6 +75,10 @@ model Scan {
   error        String?
   /// Append-only progress events: [{ "key": "cloning", "at": "2026-01-01T00:00:00Z" }]
   steps        Json?
+  // Opt-in read-only public sharing. Null token = private (the default). A random
+  // token is minted when the owner chooses to share, and cleared to revoke.
+  shareToken   String?   @unique
+  sharedAt     DateTime?
   createdAt    DateTime  @default(now())
   finishedAt   DateTime?
   findings     Finding[]

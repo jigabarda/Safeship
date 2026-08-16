@@ -6,6 +6,7 @@ import { ScanReport, type ScanData } from "@/components/ScanReport";
 import { byPriorityThenSeverity } from "@/lib/scan/ordering";
 import { failScanIfStale, STALE_SCAN_ERROR } from "@/lib/scan/staleScans";
 import { parseScanSteps } from "@/lib/scan/steps";
+import { getRepoScoreHistory } from "@/lib/scan/history";
 
 export default async function ScanPage({
   params,
@@ -30,6 +31,14 @@ export default async function ScanPage({
   }
 
   const findings = [...scan.findings].sort(byPriorityThenSeverity);
+
+  // Prior scores for this repo, so the report can show a "since last scan" delta
+  // and a trend sparkline next to the score.
+  const priorScores = await getRepoScoreHistory(
+    scan.userId,
+    scan.repoFullName,
+    scan.createdAt,
+  );
 
   const initial: ScanData = {
     id: scan.id,
@@ -62,7 +71,7 @@ export default async function ScanPage({
         username={session.user.username ?? session.user.name}
         containerClass="max-w-5xl"
       />
-      <ScanReport scanId={id} initial={initial} />
+      <ScanReport scanId={id} initial={initial} priorScores={priorScores} />
     </>
   );
 }

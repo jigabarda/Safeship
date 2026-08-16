@@ -22,6 +22,7 @@ import {
 } from "@/lib/scan/steps";
 import { AREA_META, AREA_SORT, classifyArea, type Area } from "@/lib/scan/area";
 import { computeScore } from "@/lib/scan/score";
+import { ScoreTrend } from "@/components/ScoreTrend";
 
 export interface FindingData {
   id: string;
@@ -68,7 +69,16 @@ function locationOf(f: FindingData): string {
   return f.filePath ? `${f.filePath}${f.line ? `:${f.line}` : ""}` : f.engine;
 }
 
-export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanData }) {
+export function ScanReport({
+  scanId,
+  initial,
+  priorScores = [],
+}: {
+  scanId: string;
+  initial: ScanData;
+  /** Prior completed scores for this repo, oldest → newest, for the trend. */
+  priorScores?: number[];
+}) {
   const [data, setData] = useState<ScanData>(initial);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -114,7 +124,9 @@ export function ScanReport({ scanId, initial }: { scanId: string; initial: ScanD
         )}
         {data.status === "cancelled" && <CancelledBanner />}
         {data.status === "failed" && <FailedBanner error={data.error} />}
-        {data.status === "done" && <Report data={data} scanId={scanId} />}
+        {data.status === "done" && (
+          <Report data={data} scanId={scanId} priorScores={priorScores} />
+        )}
       </main>
     </>
   );
@@ -369,7 +381,15 @@ function ScoreGauge({ score, colorClass }: { score: number; colorClass: string }
 
 type GroupBy = "priority" | "source" | "area";
 
-function Report({ data, scanId }: { data: ScanData; scanId: string }) {
+function Report({
+  data,
+  scanId,
+  priorScores,
+}: {
+  data: ScanData;
+  scanId: string;
+  priorScores: number[];
+}) {
   const [query, setQuery] = useState("");
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set());
   const [groupBy, setGroupBy] = useState<GroupBy>("priority");
@@ -640,6 +660,23 @@ function Report({ data, scanId }: { data: ScanData; scanId: string }) {
         <ScoreGauge score={score} colorClass={meta.text} />
         <div className="flex-1 text-center sm:text-left">
           <p className={`text-lg font-semibold ${meta.text}`}>{meta.label}</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-start">
+            <ScoreTrend priorScores={priorScores} currentScore={score} />
+            {priorScores.length > 0 && (
+              <Link
+                href={`/scan/${scanId}/compare`}
+                className="text-xs font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+              >
+                Compare with previous →
+              </Link>
+            )}
+            <Link
+              href={`/scan/${scanId}/print`}
+              className="text-xs font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              Export / Print →
+            </Link>
+          </div>
           <p className="mt-1 text-sm text-muted">
             {total === 0
               ? dismissedFindings.length > 0

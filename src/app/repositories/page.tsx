@@ -6,6 +6,7 @@ import { RepoList } from "@/components/RepoList";
 import { ScanList } from "@/components/ScanList";
 import { fetchReposCached } from "@/lib/github/repos";
 import { failStaleScans } from "@/lib/scan/staleScans";
+import { getRepoLatestScores } from "@/lib/scan/history";
 
 export default async function RepositoriesPage() {
   const session = await auth();
@@ -13,14 +14,17 @@ export default async function RepositoriesPage() {
   const userId = session.user.id;
 
   const user = await db.user.findUnique({ where: { id: userId } });
-  const [reposResult, , scans] = await Promise.all([
+  const [reposResult, , scans, repoScores, watchedRepos] = await Promise.all([
     user?.accessToken
       ? fetchReposCached(userId, user.accessToken)
       : Promise.resolve({ repos: [], error: "No GitHub token on file — please sign in again." }),
     failStaleScans(userId),
     db.scan.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 }),
+    getRepoLatestScores(userId),
+    db.watchedRepo.findMany({ where: { userId }, select: { repoFullName: true } }),
   ]);
   const { repos, error } = reposResult;
+  const watchedNames = watchedRepos.map((w) => w.repoFullName);
 
   return (
     <>
@@ -49,7 +53,7 @@ export default async function RepositoriesPage() {
                 {error}
               </p>
             ) : (
-              <RepoList repos={repos} />
+              <RepoList repos={repos} scores={repoScores} watched={watchedNames} />
             )}
           </section>
 
