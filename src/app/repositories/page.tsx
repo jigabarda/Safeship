@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { AppHeader } from "@/components/AppHeader";
@@ -14,7 +15,7 @@ export default async function RepositoriesPage() {
   const userId = session.user.id;
 
   const user = await db.user.findUnique({ where: { id: userId } });
-  const [reposResult, , scans, repoScores, watchedRepos] = await Promise.all([
+  const [reposResult, , scans, repoScores, watchedRepos, ignoredCount] = await Promise.all([
     user?.accessToken
       ? fetchReposCached(userId, user.accessToken)
       : Promise.resolve({ repos: [], error: "No GitHub token on file — please sign in again." }),
@@ -22,6 +23,7 @@ export default async function RepositoriesPage() {
     db.scan.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 }),
     getRepoLatestScores(userId),
     db.watchedRepo.findMany({ where: { userId }, select: { repoFullName: true } }),
+    db.ignoreRule.count({ where: { userId } }),
   ]);
   const { repos, error } = reposResult;
   const watchedNames = watchedRepos.map((w) => w.repoFullName);
@@ -36,9 +38,17 @@ export default async function RepositoriesPage() {
       <main className="animate-in mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-10">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Repositories</h1>
-          <p className="mt-1 text-muted">
-            Pick a repository to scan, and see the scans you&apos;ve already run.
-          </p>
+          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-3">
+            <p className="text-muted">
+              Pick a repository to scan, and see the scans you&apos;ve already run.
+            </p>
+            <Link
+              href="/ignored"
+              className="shrink-0 text-sm font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              Ignored findings{ignoredCount > 0 ? ` (${ignoredCount})` : ""} →
+            </Link>
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start">

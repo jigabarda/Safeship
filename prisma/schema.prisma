@@ -32,6 +32,7 @@ model User {
   advisorRuns   AdvisorRun[]
   conversations Conversation[]
   watchedRepos  WatchedRepo[]
+  ignoreRules   IgnoreRule[]
 }
 
 // A repo the user asked Safeship to re-scan automatically on a schedule, so its
@@ -148,4 +149,26 @@ model ChatMessage {
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+// An explicit, repo-scoped decision to ignore a class of finding (false
+// positive / accepted risk / won't fix). This is the baseline: it is what makes
+// a dismissal *stick* across future scans, and revoking a rule is what makes a
+// finding come back. filePath is "" when the finding has no file, which also
+// keeps the unique constraint usable (Postgres treats NULLs as distinct).
+model IgnoreRule {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoFullName String
+  engine       String
+  ruleId       String
+  filePath     String   @default("")
+  reason       String // false_positive | accepted_risk | wont_fix
+  title        String? // last-seen finding title, for a readable management list
+  severity     String? // last-seen severity, same purpose
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, repoFullName, engine, ruleId, filePath])
+  @@index([userId, repoFullName])
 }

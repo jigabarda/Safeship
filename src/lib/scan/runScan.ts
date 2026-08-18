@@ -3,7 +3,8 @@ import { fallbackPriority } from "../llm/prompt";
 import { runEngineScan } from "./engineScan";
 import { recordScanStep } from "./recordStep";
 import { computeScore } from "./score";
-import { dismissalKey, priorDismissalsForScan } from "./dismissals";
+import { dismissalKey } from "./dismissals";
+import { ignoreRulesForScan } from "./ignoreRules";
 
 export interface RunScanOptions {
   /**
@@ -67,11 +68,11 @@ export async function runScan(
     await recordScanStep(scanId, "reporting");
 
     if (findings.length > 0) {
-      const prior = await priorDismissalsForScan(scanId);
+      const ignored = await ignoreRulesForScan(scanId);
       await db.finding.createMany({
         data: findings.map((finding) => {
           const key = dismissalKey(finding.engine, finding.ruleId, finding.filePath);
-          const carried = prior.has(key);
+          const carried = ignored.has(key);
           return {
             scanId,
             engine: finding.engine,
@@ -86,7 +87,7 @@ export async function runScan(
             suggestedFix: null,
             redacted: finding.redacted,
             dismissed: carried,
-            dismissReason: carried ? (prior.get(key) ?? null) : null,
+            dismissReason: carried ? (ignored.get(key) ?? null) : null,
             dismissedAt: carried ? new Date() : null,
           };
         }),

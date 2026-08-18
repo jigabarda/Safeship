@@ -9,8 +9,13 @@ import { usePathname } from "next/navigation";
 const TABS: Array<{ href: string; label: string; match: string[] }> = [
   { href: "/dashboard", label: "Dashboard", match: ["/dashboard"] },
   // Repositories holds the repo list AND their scan history; a report
-  // (/scan/[id]) and the old /scans route both keep this tab active.
-  { href: "/repositories", label: "Repositories", match: ["/repositories", "/scans", "/scan/"] },
+  // (/scan/[id]), the old /scans route, and the ignored-findings baseline all
+  // keep this tab active.
+  {
+    href: "/repositories",
+    label: "Repositories",
+    match: ["/repositories", "/scans", "/scan/", "/ignored"],
+  },
   { href: "/advisor", label: "Advisor", match: ["/advisor"] },
   { href: "/assistant", label: "Assistant", match: ["/assistant"] },
 ];
