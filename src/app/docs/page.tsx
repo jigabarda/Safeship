@@ -106,7 +106,10 @@ export default function DocsPage() {
             <Ul>
               <li>
                 <strong className="text-foreground">Safety score (0–100).</strong> A quick overall
-                signal computed from the findings&apos; severity — higher is safer.
+                signal computed from the findings&apos; severity — higher is safer. Each finding
+                counts a little less than the one before it, so a repository with a long
+                backlog still shows progress as you work through it, and an open critical
+                keeps the score low however few findings there are.
               </li>
               <li>
                 <strong className="text-foreground">Severity.</strong> critical / high / medium / low
