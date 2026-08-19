@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { DownloadFindings } from "@/components/DownloadFindings";
 import { PrintButton } from "@/components/PrintButton";
 import { ShareLink } from "@/components/ShareLink";
 import { StaticScanReport } from "@/components/StaticScanReport";
@@ -43,6 +44,7 @@ export default async function ScanReportPrintPage({
         </Link>
         <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
           <ShareLink scanId={id} initialToken={scan.shareToken} />
+          <DownloadFindings scanId={id} />
           <PrintButton />
         </div>
       </div>
