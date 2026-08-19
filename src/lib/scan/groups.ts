@@ -59,6 +59,19 @@ export function packageFromOsvTitle(title: string): string | null {
   return name.length > 0 ? name : null;
 }
 
+/** The package name *and* installed version an osv finding refers to. */
+export function packageRefFromOsvTitle(
+  title: string,
+): { name: string; version: string } | null {
+  const sep = title.indexOf(": ");
+  const head = sep === -1 ? title : title.slice(0, sep);
+  const at = head.lastIndexOf("@");
+  if (at <= 0) return null;
+  const name = head.slice(0, at).trim();
+  const version = head.slice(at + 1).trim();
+  return name && version ? { name, version } : null;
+}
+
 /**
  * Group findings by the action that resolves them:
  *   • a vulnerable dependency  → upgrading that package
