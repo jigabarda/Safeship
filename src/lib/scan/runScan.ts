@@ -5,6 +5,7 @@ import { recordScanStep } from "./recordStep";
 import { computeScore } from "./score";
 import { dismissalKey } from "./dismissals";
 import { ignoreRulesForScan } from "./ignoreRules";
+import { toJsonEngineStatuses } from "./engineStatus";
 
 export interface RunScanOptions {
   /**
@@ -43,7 +44,7 @@ export async function runScan(
     // 1) Get REDACTED findings from the engines (clone + run + redact + cleanup).
     // (No "preparing" step locally — the engines are already installed here.)
     await recordScanStep(scanId, "scanning");
-    const { findings } = await runEngineScan({
+    const { findings, engines: engineStatuses } = await runEngineScan({
       repoUrl: scan.repoUrl,
       token: scan.user.accessToken,
       sourceDirOverride: opts.sourceDirOverride,
@@ -103,7 +104,12 @@ export async function runScan(
     );
     await db.scan.update({
       where: { id: scanId },
-      data: { status: "done", score, finishedAt: new Date() },
+      data: {
+        status: "done",
+        score,
+        finishedAt: new Date(),
+        engines: toJsonEngineStatuses(engineStatuses),
+      },
     });
   } catch (e) {
     await db.scan.update({

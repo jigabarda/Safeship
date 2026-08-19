@@ -76,6 +76,11 @@ model Scan {
   error        String?
   /// Append-only progress events: [{ "key": "cloning", "at": "2026-01-01T00:00:00Z" }]
   steps        Json?
+  /// Per-engine outcome for this scan: [{ "engine": "semgrep", "available": false,
+  /// "error": "...", "durationMs": 12, "findingCount": 0 }]. Null for scans that
+  /// ran before this was recorded, which the report shows as unknown rather than
+  /// claiming every engine ran.
+  engines      Json?
   // Opt-in read-only public sharing. Null token = private (the default). A random
   // token is minted when the owner chooses to share, and cleared to revoke.
   shareToken   String?   @unique
