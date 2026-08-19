@@ -1,12 +1,14 @@
 import { runGitleaks } from "./gitleaks";
 import { runOsv } from "./osv";
 import { runSemgrep } from "./semgrep";
+import { runTrivy } from "./trivy";
 import type { EngineResult } from "./types";
 
 export * from "./types";
 export { runGitleaks } from "./gitleaks";
 export { runOsv } from "./osv";
 export { runSemgrep } from "./semgrep";
+export { runTrivy } from "./trivy";
 
 export interface AllEnginesResult {
   results: EngineResult[];
@@ -27,6 +29,7 @@ export async function runAllEngines(
     runGitleaks(targetDir, timeoutMs),
     runOsv(targetDir, timeoutMs),
     runSemgrep(targetDir, timeoutMs),
+    runTrivy(targetDir, timeoutMs),
   ]);
 
   return {

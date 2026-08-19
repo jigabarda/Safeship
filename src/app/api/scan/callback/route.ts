@@ -12,7 +12,7 @@ import { ignoreRulesForScan } from "@/lib/scan/ignoreRules";
 // added lazily when a finding is opened (Phase F).
 
 const findingSchema = z.object({
-  engine: z.enum(["gitleaks", "semgrep", "osv"]),
+  engine: z.enum(["gitleaks", "semgrep", "osv", "trivy"]),
   ruleId: z.string(),
   severity: z.enum(["critical", "high", "medium", "low"]),
   title: z.string(),
