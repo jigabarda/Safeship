@@ -3,7 +3,8 @@ import { fallbackPriority } from "../llm/prompt";
 import { runEngineScan } from "./engineScan";
 import { recordScanStep } from "./recordStep";
 import { computeScore } from "./score";
-import { dismissalKey, priorDismissalsForScan } from "./dismissals";
+import { dismissalKey } from "./dismissals";
+import { ignoreRulesForScan } from "./ignoreRules";
 
 export interface RunScanOptions {
   /**
@@ -66,12 +67,12 @@ export async function runScan(
     // local model, for text the user may never look at.
     await recordScanStep(scanId, "reporting");
 
+    const ignored = await ignoreRulesForScan(scanId);
     if (findings.length > 0) {
-      const prior = await priorDismissalsForScan(scanId);
       await db.finding.createMany({
         data: findings.map((finding) => {
           const key = dismissalKey(finding.engine, finding.ruleId, finding.filePath);
-          const carried = prior.has(key);
+          const carried = ignored.has(key);
           return {
             scanId,
             engine: finding.engine,
@@ -86,15 +87,20 @@ export async function runScan(
             suggestedFix: null,
             redacted: finding.redacted,
             dismissed: carried,
-            dismissReason: carried ? (prior.get(key) ?? null) : null,
+            dismissReason: carried ? (ignored.get(key) ?? null) : null,
             dismissedAt: carried ? new Date() : null,
           };
         }),
       });
     }
 
-    // 3) Score + finish.
-    const score = computeScore(findings.map((f) => f.severity));
+    // 3) Score + finish. Ignored findings are excluded so the stored score
+    // agrees with the report, which scores active findings only.
+    const score = computeScore(
+      findings
+        .filter((f) => !ignored.has(dismissalKey(f.engine, f.ruleId, f.filePath)))
+        .map((f) => f.severity),
+    );
     await db.scan.update({
       where: { id: scanId },
       data: { status: "done", score, finishedAt: new Date() },

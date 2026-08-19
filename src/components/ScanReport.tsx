@@ -1101,6 +1101,10 @@ function DismissControl({ onDismiss }: { onDismiss: (reason: string) => void }) 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/30 p-3">
       <span className="text-xs font-medium text-muted">Dismiss as…</span>
+      <p className="text-xs text-muted">
+        This is remembered for the whole repository — the finding stays hidden on
+        future scans until you revoke it.
+      </p>
       <div className="flex flex-wrap gap-1.5">
         {DISMISS_REASONS.map((r) => (
           <button
@@ -1141,6 +1145,15 @@ function DismissedSection({
       <summary className="cursor-pointer select-none text-sm font-medium text-muted">
         Dismissed ({findings.length})
       </summary>
+      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+        <span>Hidden on future scans of this repo too.</span>
+        <Link
+          href="/ignored"
+          className="font-medium underline underline-offset-2 transition-colors hover:text-foreground"
+        >
+          Manage ignored findings →
+        </Link>
+      </p>
       <ul className="mt-3 flex flex-col divide-y divide-line">
         {findings.map((f) => (
           <li key={f.id} className="flex items-center justify-between gap-3 py-2.5">
