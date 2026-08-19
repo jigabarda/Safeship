@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   addIgnoreRule,
   isIgnoreReason,
+  recomputeRepoScores,
   removeIgnoreRule,
   syncFindingsToRule,
   type IgnoreReason,
@@ -61,6 +62,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await removeIgnoreRule(target);
   }
   await syncFindingsToRule(target, dismissed, reason);
+  await recomputeRepoScores(target.userId, target.repoFullName);
 
   return Response.json({ ok: true, dismissed, dismissReason: reason });
 }

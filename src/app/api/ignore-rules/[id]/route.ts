@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { syncFindingsToRule } from "@/lib/scan/ignoreRules";
+import { recomputeRepoScores, syncFindingsToRule } from "@/lib/scan/ignoreRules";
 
 // Revoke an ignore rule. The finding starts being reported again — both on the
 // repo's existing scan reports and on every scan from here on. Owner-only.
@@ -28,6 +28,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     false,
     null,
   );
+  await recomputeRepoScores(rule.userId, rule.repoFullName);
 
   return Response.json({ ok: true, revoked: id });
 }

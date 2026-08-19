@@ -23,7 +23,7 @@ export default async function CompareScanPage({
 
   const current = await db.scan.findUnique({
     where: { id },
-    include: { findings: true },
+    include: { findings: { where: { dismissed: false } } },
   });
   if (!current || current.userId !== userId) notFound();
   // Only a finished scan has a settled set of findings to compare.
@@ -103,7 +103,7 @@ async function ComparisonBody({
 
   const baseScan = await db.scan.findUnique({
     where: { id: baseMeta.id },
-    include: { findings: true },
+    include: { findings: { where: { dismissed: false } } },
   });
   if (!baseScan) notFound();
 

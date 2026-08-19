@@ -67,8 +67,8 @@ export async function runScan(
     // local model, for text the user may never look at.
     await recordScanStep(scanId, "reporting");
 
+    const ignored = await ignoreRulesForScan(scanId);
     if (findings.length > 0) {
-      const ignored = await ignoreRulesForScan(scanId);
       await db.finding.createMany({
         data: findings.map((finding) => {
           const key = dismissalKey(finding.engine, finding.ruleId, finding.filePath);
@@ -94,8 +94,13 @@ export async function runScan(
       });
     }
 
-    // 3) Score + finish.
-    const score = computeScore(findings.map((f) => f.severity));
+    // 3) Score + finish. Ignored findings are excluded so the stored score
+    // agrees with the report, which scores active findings only.
+    const score = computeScore(
+      findings
+        .filter((f) => !ignored.has(dismissalKey(f.engine, f.ruleId, f.filePath)))
+        .map((f) => f.severity),
+    );
     await db.scan.update({
       where: { id: scanId },
       data: { status: "done", score, finishedAt: new Date() },

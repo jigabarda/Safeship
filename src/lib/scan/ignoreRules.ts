@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { dismissalKey } from "./dismissals";
+import { computeScore } from "./score";
+import type { Severity } from "../engines/types";
 
 // Ignore rules are the *baseline*: an explicit, repo-scoped decision that a
 // class of finding (engine + ruleId + filePath) is a false positive, an accepted
@@ -125,4 +127,30 @@ export async function syncFindingsToRule(
       dismissedAt: dismissed ? new Date() : null,
     },
   });
+}
+
+const SEVERITIES: readonly string[] = ["critical", "high", "medium", "low"];
+
+/**
+ * Re-score every finished scan of a repo from its active findings. A scan's
+ * score is stored at scan time, so ignoring or restoring a finding afterwards
+ * would otherwise leave the repo-list badge, the dashboard triage list, and the
+ * score trend showing a number the report itself disagrees with.
+ */
+export async function recomputeRepoScores(userId: string, repoFullName: string): Promise<void> {
+  const scans = await db.scan.findMany({
+    where: { userId, repoFullName, status: "done" },
+    select: { id: true, score: true, findings: { select: { severity: true, dismissed: true } } },
+  });
+
+  for (const scan of scans) {
+    const score = computeScore(
+      scan.findings
+        .filter((f) => !f.dismissed && SEVERITIES.includes(f.severity))
+        .map((f) => f.severity as Severity),
+    );
+    if (score !== scan.score) {
+      await db.scan.update({ where: { id: scan.id }, data: { score } });
+    }
+  }
 }

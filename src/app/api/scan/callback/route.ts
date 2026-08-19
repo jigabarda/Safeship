@@ -95,7 +95,14 @@ export async function POST(request: Request) {
     });
   }
 
-  const score = computeScore(parsed.findings.map((f) => f.severity));
+  // Ignored findings are excluded from the stored score, so it agrees with the
+  // report (which scores active findings only) and with the repo-list badges.
+  const ignoredForScore = await ignoreRulesForScan(scan.id);
+  const score = computeScore(
+    parsed.findings
+      .filter((f) => !ignoredForScore.has(dismissalKey(f.engine, f.ruleId, f.filePath)))
+      .map((f) => f.severity),
+  );
   await db.scan.update({
     where: { id: scan.id },
     data: { status: "done", score, finishedAt: new Date() },
