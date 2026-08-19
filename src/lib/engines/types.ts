@@ -4,7 +4,7 @@
 
 export type Severity = "critical" | "high" | "medium" | "low";
 
-export type EngineName = "gitleaks" | "semgrep" | "osv";
+export type EngineName = "gitleaks" | "semgrep" | "osv" | "trivy";
 
 export interface NormalizedFinding {
   engine: EngineName;

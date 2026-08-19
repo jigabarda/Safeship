@@ -91,8 +91,9 @@ export default function DocsPage() {
               </li>
               <li>
                 <strong className="text-foreground">Wait a moment.</strong> Your repo is cloned into a
-                temporary sandbox, and three open-source engines run over it: Gitleaks (secrets),
-                Semgrep (insecure code), and OSV (vulnerable dependencies).
+                temporary sandbox, and four open-source engines run over it: Gitleaks (secrets),
+                Semgrep (insecure code), OSV (vulnerable dependencies), and Trivy (infrastructure
+                misconfigurations in Terraform, Kubernetes, and Dockerfiles).
               </li>
               <li>
                 <strong className="text-foreground">Read the report.</strong> Findings are grouped and
@@ -231,7 +232,7 @@ export default function DocsPage() {
               <li>
                 <strong className="text-foreground">No findings.</strong> Often good news. It can also
                 mean the repo has no files the engines recognize — Safeship reports only what
-                Gitleaks, Semgrep, and OSV detect.
+                Gitleaks, Semgrep, OSV, and Trivy detect.
               </li>
               <li>
                 <strong className="text-foreground">Explanations or fixes are slow.</strong> The AI is

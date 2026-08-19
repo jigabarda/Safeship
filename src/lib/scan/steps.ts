@@ -24,11 +24,12 @@ export const SCAN_STEP_META: Record<ScanStepKey, { label: string; detail: string
   },
   preparing: {
     label: "Preparing the security engines",
-    detail: "gitleaks · osv-scanner · semgrep",
+    detail: "gitleaks · osv-scanner · semgrep · trivy",
   },
   scanning: {
     label: "Running the security engines",
-    detail: "Cloning your repo, then scanning for secrets, dependencies, and code patterns",
+    detail:
+      "Cloning your repo, then scanning for secrets, dependencies, code patterns, and infrastructure config",
   },
   reporting: {
     label: "Preparing your report",

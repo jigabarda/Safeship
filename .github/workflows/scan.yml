@@ -33,6 +33,7 @@ env:
   # Pinned engine versions (verified asset names). Bump deliberately.
   GITLEAKS_VERSION: "8.30.1"
   OSV_SCANNER_VERSION: "2.4.0"
+  TRIVY_VERSION: "0.74.0"
 
 jobs:
   scan:
@@ -94,6 +95,13 @@ jobs:
           chmod +x osv-scanner
           sudo mv osv-scanner /usr/local/bin/osv-scanner
           osv-scanner --version
+
+      - name: Install trivy
+        run: |
+          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o trivy.tar.gz
+          tar -xzf trivy.tar.gz trivy
+          sudo mv trivy /usr/local/bin/trivy
+          trivy --version
 
       - name: Install semgrep
         run: |

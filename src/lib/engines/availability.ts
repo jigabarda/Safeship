@@ -39,6 +39,16 @@ const CHECKS: Array<{
       "Install from github.com/google/osv-scanner/releases (or `brew install osv-scanner`), then add it to PATH or set OSV_SCANNER_PATH.",
   },
   {
+    engine: "trivy",
+    label: "trivy",
+    command: "trivy",
+    envVar: "TRIVY_PATH",
+    args: ["--version"],
+    purpose: "finds infrastructure misconfigurations",
+    installHint:
+      "Install from github.com/aquasecurity/trivy/releases (or `brew install trivy`), then add it to PATH or set TRIVY_PATH.",
+  },
+  {
     engine: "semgrep",
     label: "semgrep",
     command: "semgrep",
