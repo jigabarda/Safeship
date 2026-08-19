@@ -22,6 +22,8 @@ import {
 } from "@/lib/scan/steps";
 import { AREA_META, AREA_SORT, classifyArea, type Area } from "@/lib/scan/area";
 import { computeScore } from "@/lib/scan/score";
+import { buildGroupPlan } from "@/lib/scan/groups";
+import { FixPlan } from "./FixPlan";
 import { ScoreTrend } from "@/components/ScoreTrend";
 
 export interface FindingData {
@@ -520,6 +522,9 @@ function Report({
   const activeFindings = useMemo(() => findings.filter((f) => !f.dismissed), [findings]);
   const dismissedFindings = useMemo(() => findings.filter((f) => f.dismissed), [findings]);
 
+  // The same active findings, collapsed into the actions that resolve them.
+  const fixPlan = useMemo(() => buildGroupPlan(activeFindings), [activeFindings]);
+
   // The score reflects only active findings, so dismissing a false positive
   // improves it live.
   const score = useMemo(
@@ -713,6 +718,8 @@ function Report({
         <EmptyState />
       ) : total > 0 ? (
         <>
+          <FixPlan plan={fixPlan} onSelectFinding={setSelectedId} />
+
           {/* Controls */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
