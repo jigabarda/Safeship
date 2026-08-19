@@ -135,12 +135,7 @@ function GroupRow({
           {isDirect ? (
             <UpgradeButton scanId={scanId} packageName={group.label} />
           ) : (
-            <p className="text-xs text-muted">
-              <strong className="font-medium">Transitive dependency</strong> — not listed
-              in package.json, so there is no version here to change. Something else
-              pulls it in; it clears when that dependency updates, or when you pin it
-              with an npm <code>overrides</code> entry.
-            </p>
+            <OverrideButton scanId={scanId} packageName={group.label} />
           )}
         </div>
       )}
@@ -223,6 +218,82 @@ function UpgradeButton({ scanId, packageName }: { scanId: string; packageName: s
         className="self-start rounded-full border border-line px-3 py-1 text-xs font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
       >
         {state.status === "working" ? "Opening pull request…" : "Upgrade with a pull request"}
+      </button>
+      {state.status === "error" && (
+        <p className="text-xs text-rose-600 dark:text-rose-400">{state.message}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pins a transitive dependency with an npm override. Separate from the upgrade
+ * button because the explanation matters: this package isn't declared here, so
+ * the user needs to know what is being forced and why before they click.
+ */
+function OverrideButton({ scanId, packageName }: { scanId: string; packageName: string }) {
+  const [state, setState] = useState<
+    | { status: "idle" }
+    | { status: "working" }
+    | { status: "done"; url: string; from: string; to: string; advisories: number; majorChange: boolean }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
+
+  async function run() {
+    setState({ status: "working" });
+    try {
+      const res = await fetch(`/api/scan/${scanId}/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packages: [packageName] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      const pinned = data.pinned?.[0];
+      setState({
+        status: "done",
+        url: data.prUrl,
+        from: pinned?.from ?? "",
+        to: pinned?.to ?? "",
+        advisories: data.advisoriesResolved ?? 0,
+        majorChange: Boolean(pinned?.majorChange),
+      });
+    } catch (e) {
+      setState({ status: "error", message: (e as Error).message });
+    }
+  }
+
+  if (state.status === "done") {
+    return (
+      <p className="text-xs text-muted">
+        Opened a pull request pinning {packageName} from <code>{state.from}</code> to{" "}
+        <code>{state.to}</code>
+        {state.majorChange ? " (a major version change — check the changelog)" : ""} —{" "}
+        <a
+          href={state.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium underline underline-offset-2 hover:text-foreground"
+        >
+          review it on GitHub →
+        </a>
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted">
+        <strong className="font-medium">Transitive dependency</strong> — not listed in
+        package.json, so there is no version here to raise. An npm{" "}
+        <code>overrides</code> entry can force the patched version anyway.
+      </p>
+      <button
+        onClick={run}
+        disabled={state.status === "working"}
+        className="self-start rounded-full border border-line px-3 py-1 text-xs font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
+      >
+        {state.status === "working" ? "Opening pull request…" : "Pin with an override"}
       </button>
       {state.status === "error" && (
         <p className="text-xs text-rose-600 dark:text-rose-400">{state.message}</p>

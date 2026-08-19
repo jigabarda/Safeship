@@ -128,3 +128,55 @@ export function isNewerVersion(current: string, next: string): boolean {
   }
   return false;
 }
+
+/** The indentation package.json already uses, so an edit doesn't reformat it. */
+export function detectIndent(content: string): string | number {
+  for (const line of content.split("\n").slice(1)) {
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith('"')) continue;
+    const lead = line.slice(0, line.length - trimmed.length);
+    if (lead.length === 0) continue;
+    return lead.includes("\t") ? "\t" : lead.length;
+  }
+  return 2;
+}
+
+/**
+ * Merge npm `overrides` entries into package.json.
+ *
+ * Unlike a version bump this cannot be a targeted textual edit — the block may
+ * not exist yet — so the file is parsed and re-serialised with its own
+ * indentation and trailing newline preserved. Round-tripping a manifest with no
+ * changes must produce a byte-identical file; if it doesn't, the caller is told
+ * rather than handed a diff full of reformatting.
+ */
+export function applyOverrides(
+  content: string,
+  overrides: Record<string, string>,
+): { content: string; reformatted: boolean } | null {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+
+  const indent = detectIndent(content);
+  const trailingNewline = content.endsWith("\n") ? "\n" : "";
+
+  // Does serialising round-trip cleanly? If not, the edit would reformat the
+  // file and the caller should say so in the pull request.
+  const roundTripped = JSON.stringify(parsed, null, indent) + trailingNewline;
+  const reformatted = roundTripped !== content;
+
+  const existing =
+    typeof parsed.overrides === "object" && parsed.overrides !== null
+      ? (parsed.overrides as Record<string, unknown>)
+      : {};
+  parsed.overrides = { ...existing, ...overrides };
+
+  return {
+    content: JSON.stringify(parsed, null, indent) + trailingNewline,
+    reformatted,
+  };
+}
