@@ -5,6 +5,7 @@ import type { Severity } from "@/lib/engines/types";
 import { computeScore } from "@/lib/scan/score";
 import { dismissalKey } from "@/lib/scan/dismissals";
 import { ignoreRulesForScan } from "@/lib/scan/ignoreRules";
+import { toJsonEngineStatuses } from "@/lib/scan/engineStatus";
 
 // Receives REDACTED findings from the GitHub Actions runner and persists them.
 // Authenticated with a shared secret (SCAN_CALLBACK_SECRET) that the runner sends
@@ -22,9 +23,20 @@ const findingSchema = z.object({
   redacted: z.boolean(),
 });
 
+const engineSchema = z.object({
+  engine: z.string(),
+  available: z.boolean(),
+  error: z.string().optional(),
+  durationMs: z.number().optional(),
+  findingCount: z.number().optional(),
+});
+
 const payloadSchema = z.object({
   scanId: z.string().min(1),
   findings: z.array(findingSchema),
+  // Optional: a runner from before engine reporting existed won't send it, and
+  // that should not fail an otherwise good scan.
+  engines: z.array(engineSchema).optional(),
 });
 
 function fallbackPriority(sev: Severity): "fix_now" | "should_fix" | "minor" {
@@ -105,7 +117,12 @@ export async function POST(request: Request) {
   );
   await db.scan.update({
     where: { id: scan.id },
-    data: { status: "done", score, finishedAt: new Date() },
+    data: {
+      status: "done",
+      score,
+      finishedAt: new Date(),
+      ...(parsed.engines ? { engines: toJsonEngineStatuses(parsed.engines) } : {}),
+    },
   });
 
   return Response.json({ ok: true, findings: parsed.findings.length, score });

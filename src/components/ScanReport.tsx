@@ -23,6 +23,8 @@ import {
 import { AREA_META, AREA_SORT, classifyArea, type Area } from "@/lib/scan/area";
 import { computeScore } from "@/lib/scan/score";
 import { buildGroupPlan } from "@/lib/scan/groups";
+import type { EngineStatus } from "@/lib/scan/engineStatus";
+import { EngineCoverage } from "./EngineCoverage";
 import { FixPlan } from "./FixPlan";
 import { ScoreTrend } from "@/components/ScoreTrend";
 
@@ -53,6 +55,8 @@ export interface ScanData {
   finishedAt: string | null;
   /** Reported pipeline progress. Absent on older scans, hence optional. */
   steps?: ScanStepEvent[];
+  /** Which engines ran. Null for scans from before this was recorded. */
+  engines?: EngineStatus[] | null;
   findings: FindingData[];
 }
 
@@ -713,6 +717,8 @@ function Report({
           )}
         </div>
       </section>
+
+      <EngineCoverage engines={data.engines} />
 
       {total === 0 && dismissedFindings.length === 0 ? (
         <EmptyState />

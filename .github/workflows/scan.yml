@@ -146,7 +146,7 @@ jobs:
           SCAN_ID: ${{ steps.vars.outputs.scan_id }}
           CALLBACK_SECRET: ${{ secrets.SCAN_CALLBACK_SECRET }}
         run: |
-          jq -c --arg sid "$SCAN_ID" '{scanId: $sid, findings: .findings}' findings.json > payload.json
+          jq -c --arg sid "$SCAN_ID" '{scanId: $sid, findings: .findings, engines: .engines}' findings.json > payload.json
           echo "posting $(wc -c < payload.json) bytes to callback"
           code=$(curl -sS -o resp.txt -w "%{http_code}" -X POST "$CALLBACK_URL" \
             -H "content-type: application/json" \

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { byPriorityThenSeverity } from "@/lib/scan/ordering";
 import { failScanIfStale, STALE_SCAN_ERROR } from "@/lib/scan/staleScans";
 import { parseScanSteps } from "@/lib/scan/steps";
+import { parseEngineStatus } from "@/lib/scan/engineStatus";
 
 /** Return a scan's status, score, and findings (owner-only). */
 export async function GET(
@@ -45,6 +46,7 @@ export async function GET(
     createdAt: scan.createdAt,
     finishedAt: scan.finishedAt,
     steps: parseScanSteps(scan.steps),
+    engines: parseEngineStatus(scan.engines),
     findings: findings.map((f) => ({
       id: f.id,
       engine: f.engine,
