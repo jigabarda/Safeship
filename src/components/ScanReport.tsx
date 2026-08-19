@@ -79,11 +79,14 @@ export function ScanReport({
   scanId,
   initial,
   priorScores = [],
+  directDeps = [],
 }: {
   scanId: string;
   initial: ScanData;
   /** Prior completed scores for this repo, oldest → newest, for the trend. */
   priorScores?: number[];
+  /** Packages this repo depends on directly — the ones an upgrade PR can fix. */
+  directDeps?: string[];
 }) {
   const [data, setData] = useState<ScanData>(initial);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -131,7 +134,12 @@ export function ScanReport({
         {data.status === "cancelled" && <CancelledBanner />}
         {data.status === "failed" && <FailedBanner error={data.error} />}
         {data.status === "done" && (
-          <Report data={data} scanId={scanId} priorScores={priorScores} />
+          <Report
+            data={data}
+            scanId={scanId}
+            priorScores={priorScores}
+            directDeps={directDeps}
+          />
         )}
       </main>
     </>
@@ -391,10 +399,12 @@ function Report({
   data,
   scanId,
   priorScores,
+  directDeps,
 }: {
   data: ScanData;
   scanId: string;
   priorScores: number[];
+  directDeps: string[];
 }) {
   const [query, setQuery] = useState("");
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set());
@@ -724,7 +734,12 @@ function Report({
         <EmptyState />
       ) : total > 0 ? (
         <>
-          <FixPlan plan={fixPlan} onSelectFinding={setSelectedId} />
+          <FixPlan
+            plan={fixPlan}
+            scanId={scanId}
+            directDeps={directDeps}
+            onSelectFinding={setSelectedId}
+          />
 
           {/* Controls */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

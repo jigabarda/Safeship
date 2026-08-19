@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { SEVERITY_META, severityLabel, isSeverity } from "@/lib/ui";
 import type { FindingGroup, GroupPlan } from "@/lib/scan/groups";
 
@@ -9,7 +9,19 @@ import type { FindingGroup, GroupPlan } from "@/lib/scan/groups";
  * resolve them, biggest first. A hundred rows is a list; a dozen actions is a
  * plan, and this is the difference between the two.
  */
-export function FixPlan({ plan, onSelectFinding }: { plan: GroupPlan; onSelectFinding?: (id: string) => void }) {
+export function FixPlan({
+  plan,
+  scanId,
+  directDeps = [],
+  onSelectFinding,
+}: {
+  plan: GroupPlan;
+  scanId: string;
+  /** Packages the repo depends on directly — the only ones upgradable by PR. */
+  directDeps?: string[];
+  onSelectFinding?: (id: string) => void;
+}) {
+  const direct = useMemo(() => new Set(directDeps), [directDeps]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -46,6 +58,9 @@ export function FixPlan({ plan, onSelectFinding }: { plan: GroupPlan; onSelectFi
           <GroupRow
             key={g.key}
             group={g}
+            scanId={scanId}
+            isDirect={g.kind === "package" && direct.has(g.label)}
+            knowsDeps={directDeps.length > 0}
             open={expanded === g.key}
             onToggle={() => setExpanded(expanded === g.key ? null : g.key)}
             onSelectFinding={onSelectFinding}
@@ -69,11 +84,18 @@ export function FixPlan({ plan, onSelectFinding }: { plan: GroupPlan; onSelectFi
 
 function GroupRow({
   group,
+  scanId,
+  isDirect,
+  knowsDeps,
   open,
   onToggle,
   onSelectFinding,
 }: {
   group: FindingGroup;
+  scanId: string;
+  isDirect: boolean;
+  /** False when the manifest couldn't be read, so nothing is claimed either way. */
+  knowsDeps: boolean;
   open: boolean;
   onToggle: () => void;
   onSelectFinding?: (id: string) => void;
@@ -108,6 +130,21 @@ function GroupRow({
         </span>
       </button>
 
+      {open && group.kind === "package" && knowsDeps && (
+        <div className="mt-2 pl-6">
+          {isDirect ? (
+            <UpgradeButton scanId={scanId} packageName={group.label} />
+          ) : (
+            <p className="text-xs text-muted">
+              <strong className="font-medium">Transitive dependency</strong> — not listed
+              in package.json, so there is no version here to change. Something else
+              pulls it in; it clears when that dependency updates, or when you pin it
+              with an npm <code>overrides</code> entry.
+            </p>
+          )}
+        </div>
+      )}
+
       {open && (
         <ul className="mt-2 flex flex-col gap-1 pl-6">
           {group.findings.map((f) => (
@@ -127,5 +164,69 @@ function GroupRow({
         </ul>
       )}
     </li>
+  );
+}
+
+/** Opens a pull request bumping this package in package.json. */
+function UpgradeButton({ scanId, packageName }: { scanId: string; packageName: string }) {
+  const [state, setState] = useState<
+    | { status: "idle" }
+    | { status: "working" }
+    | { status: "done"; url: string; from: string; to: string; advisories: number }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
+
+  async function run() {
+    setState({ status: "working" });
+    try {
+      const res = await fetch(`/api/scan/${scanId}/upgrade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package: packageName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      setState({
+        status: "done",
+        url: data.prUrl,
+        from: data.from,
+        to: data.to,
+        advisories: data.advisories,
+      });
+    } catch (e) {
+      setState({ status: "error", message: (e as Error).message });
+    }
+  }
+
+  if (state.status === "done") {
+    return (
+      <p className="text-xs text-muted">
+        Opened a pull request upgrading {packageName} from{" "}
+        <code>{state.from}</code> to <code>{state.to}</code> —{" "}
+        <a
+          href={state.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium underline underline-offset-2 hover:text-foreground"
+        >
+          review it on GitHub →
+        </a>
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        onClick={run}
+        disabled={state.status === "working"}
+        className="self-start rounded-full border border-line px-3 py-1 text-xs font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
+      >
+        {state.status === "working" ? "Opening pull request…" : "Upgrade with a pull request"}
+      </button>
+      {state.status === "error" && (
+        <p className="text-xs text-rose-600 dark:text-rose-400">{state.message}</p>
+      )}
+    </div>
   );
 }
